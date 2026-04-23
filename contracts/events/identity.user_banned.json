@@ -1,0 +1,8 @@
+{
+  "type": "identity.user_banned",
+  "source": "identity",
+  "payload": {
+    "userId": "uuid",
+    "bannedAt": "datetime"
+  }
+}

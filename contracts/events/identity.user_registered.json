@@ -1,0 +1,9 @@
+{
+  "type": "identity.user_registered",
+  "source": "identity",
+  "payload": {
+    "userId": "uuid",
+    "email": "string",
+    "displayName": "string"
+  }
+}

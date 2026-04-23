@@ -1,0 +1,9 @@
+{
+  "type": "identity.user_profile_updated",
+  "source": "identity",
+  "payload": {
+    "userId": "uuid",
+    "displayName": "string",
+    "avatarUrl": "string?"
+  }
+}
