@@ -1,0 +1,11 @@
+# env secrets — never commit
+.env
+*.env
+.env.*
+!.env.example
+
+# Docker override
+docker-compose.override.yml
+
+# OS
+.DS_Store
