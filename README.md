@@ -6,10 +6,10 @@ Docker Compose stack for the portfolio. Pulls pre-built images from `ghcr.io` an
 
 | Service | Image | Port |
 |---|---|---|
-| `identity` | `ghcr.io/hankkarpinen/portfolio-identity` | 8081 |
-| `forum` | `ghcr.io/hankkarpinen/portfolio-forum` | 8082 |
-| `bills` | `ghcr.io/hankkarpinen/portfolio-bills` | 8083 |
-| `frontend` | `ghcr.io/hankkarpinen/portfolio-frontend` | 3000 |
+| `identity` | `ghcr.io/hkarpinen/portfolio-identity` | 8081 |
+| `forum` | `ghcr.io/hkarpinen/portfolio-forum` | 8082 |
+| `bills` | `ghcr.io/hkarpinen/portfolio-bills` | 8083 |
+| `frontend` | `ghcr.io/hkarpinen/portfolio-frontend` | 3000 |
 | `nginx` | `nginx:alpine` | 80 (reverse proxy) |
 | `postgres` | `postgres:17` | (internal) |
 | `rabbitmq` | `rabbitmq:3-management` | 5672, 15672 |
@@ -33,10 +33,10 @@ Mailpit (dev email) at [http://localhost:8025](http://localhost:8025).
 By default all service images use `:latest`. Override via env vars:
 
 ```env
-IDENTITY_IMAGE=ghcr.io/hankkarpinen/portfolio-identity:abc1234
-FORUM_IMAGE=ghcr.io/hankkarpinen/portfolio-forum:abc1234
-BILLS_IMAGE=ghcr.io/hankkarpinen/portfolio-bills:abc1234
-FRONTEND_IMAGE=ghcr.io/hankkarpinen/portfolio-frontend:abc1234
+IDENTITY_IMAGE=ghcr.io/hkarpinen/portfolio-identity:abc1234
+FORUM_IMAGE=ghcr.io/hkarpinen/portfolio-forum:abc1234
+BILLS_IMAGE=ghcr.io/hkarpinen/portfolio-bills:abc1234
+FRONTEND_IMAGE=ghcr.io/hkarpinen/portfolio-frontend:abc1234
 ```
 
 ## Files

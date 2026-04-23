@@ -33,7 +33,7 @@ services:
       - "1025:1025"
 
   identity:
-    image: ${IDENTITY_IMAGE:-ghcr.io/hankkarpinen/portfolio-identity:latest}
+    image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
     ports:
       - "8081:8080"
     depends_on:
@@ -57,7 +57,7 @@ services:
       Storage__PublicBaseUrl: /uploads/avatars
 
   forum:
-    image: ${FORUM_IMAGE:-ghcr.io/hankkarpinen/portfolio-forum:latest}
+    image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
     ports:
       - "8082:8080"
     depends_on:
@@ -77,7 +77,7 @@ services:
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
   bills:
-    image: ${BILLS_IMAGE:-ghcr.io/hankkarpinen/portfolio-bills:latest}
+    image: ${BILLS_IMAGE:-ghcr.io/hkarpinen/portfolio-bills:latest}
     ports:
       - "8083:8080"
     depends_on:
@@ -97,7 +97,7 @@ services:
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/hankkarpinen/portfolio-frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
     ports:
       - "3000:3000"
     environment:
