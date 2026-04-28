@@ -1,3 +1,23 @@
+# Standalone dev stack — run with:
+#   docker compose -f compose.dev.yaml up -d
+#
+# Runs infrastructure, backends, and nginx.
+# The frontend is NOT containerised in dev — run it locally:
+#   cd ../frontend && npm run dev
+#
+# nginx is required for two reasons even in dev:
+#   1. Serving /uploads/* from Docker named volumes that the local Next.js
+#      process cannot access directly.
+#   2. Proxying SSE endpoints (/api/notifications/stream, /api/forum/.+/events)
+#      without buffering — the Next.js dev server rewrites buffer the response
+#      body, which breaks event streaming.
+#
+# Regular /api/* traffic uses Next.js rewrites (next.config.mjs) and bypasses
+# nginx entirely. SSE and upload traffic hits localhost:80 → nginx directly.
+#
+# Linux users: add `extra_hosts: [host.docker.internal:host-gateway]` to the
+# nginx service below, or pass --add-host=host.docker.internal:host-gateway.
+
 services:
   postgres:
     image: postgres:17
@@ -6,6 +26,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -34,6 +56,9 @@ services:
 
   identity:
     image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
+    build:
+      context: ../identity
+      dockerfile: Dockerfile
     ports:
       - "8081:8080"
     depends_on:
@@ -60,10 +85,13 @@ services:
       Email__Host: mailpit
       Email__Port: "1025"
       Storage__LocalPath: /data/avatars
-      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-http://localhost/uploads/avatars}
+      Storage__PublicBaseUrl: http://localhost/uploads/avatars
 
   forum:
     image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
+    build:
+      context: ../forum
+      dockerfile: Dockerfile
     ports:
       - "8082:8080"
     depends_on:
@@ -84,10 +112,13 @@ services:
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
       Media__RootPath: /data/forum
-      Media__PublicBaseUrl: ${MEDIA_PUBLIC_BASE_URL:-http://localhost/uploads/forum}
+      Media__PublicBaseUrl: http://localhost/uploads/forum
 
   bills:
     image: ${BILLS_IMAGE:-ghcr.io/hkarpinen/portfolio-bills:latest}
+    build:
+      context: ../bills
+      dockerfile: Dockerfile
     ports:
       - "8083:8080"
     depends_on:
@@ -108,6 +139,9 @@ services:
 
   notifications:
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
+    build:
+      context: ../notifications
+      dockerfile: Dockerfile
     ports:
       - "8084:8080"
     depends_on:
@@ -117,6 +151,12 @@ services:
         condition: service_healthy
       identity:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -125,16 +165,6 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-
-  frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost
-      INTERNAL_API_URL: http://nginx
-    depends_on:
-      - identity
-      - forum
-      - bills
 
   nginx:
     image: nginx:alpine
@@ -145,9 +175,8 @@ services:
       - forum
       - bills
       - notifications
-      - frontend
     environment:
-      FRONTEND_UPSTREAM: frontend:3000
+      FRONTEND_UPSTREAM: host.docker.internal:3000
     command: >
       /bin/sh -c
       "envsubst '$$FRONTEND_UPSTREAM' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf

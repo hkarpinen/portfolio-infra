@@ -17,12 +17,30 @@ Docker Compose stack for the portfolio. Pulls pre-built images from `ghcr.io` an
 
 ## Quick start
 
+### Production (pull published images)
+
 ```bash
 cp .env.example .env
 # Edit .env — change POSTGRES_PASSWORD and JWT_SECRET at minimum
 docker compose pull
 docker compose up -d
 ```
+
+### Local development
+
+Run the backends in Docker, the frontend locally with hot reload:
+
+```bash
+# Terminal 1 — infrastructure + backends only (no nginx, no frontend container)
+docker compose -f compose.dev.yaml up -d
+
+# Terminal 2 — Next.js dev server with hot reload
+cd ../frontend
+npm install
+npm run dev
+```
+
+`next.config.mjs` rewrites `/api/*` directly to the backend ports (8081/8082/8083), so there's no nginx in the dev path and no URL configuration needed.
 
 App available at [http://localhost](http://localhost).  
 RabbitMQ management UI at [http://localhost:15672](http://localhost:15672).  
@@ -43,7 +61,8 @@ FRONTEND_IMAGE=ghcr.io/hkarpinen/portfolio-frontend:abc1234
 
 | File | Description |
 |---|---|
-| `compose.yaml` | Service definitions |
-| `nginx.conf` | Reverse proxy routing rules |
+| `compose.yaml` | Production stack — pulls published images, nginx routes everything |
+| `compose.dev.yaml` | Dev stack — backends only, no nginx, no frontend |
+| `nginx.conf` | Reverse proxy config (production only) |
 | `init-databases.sql` | Creates `identity_db`, `forum_db`, `bills_db` on first boot |
 | `.env.example` | Template for required secrets |
