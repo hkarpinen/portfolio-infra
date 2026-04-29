@@ -114,10 +114,10 @@ services:
       Media__RootPath: /data/forum
       Media__PublicBaseUrl: http://localhost/uploads/forum
 
-  bills:
-    image: ${BILLS_IMAGE:-ghcr.io/hkarpinen/portfolio-bills:latest}
+  finance:
+    image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
     build:
-      context: ../bills
+      context: ../finance
       dockerfile: Dockerfile
     ports:
       - "8083:8080"
@@ -131,7 +131,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Bills: ${BILLS_CONN:-Host=postgres;Database=bills_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=postgres;Password=postgres}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -173,7 +173,7 @@ services:
     depends_on:
       - identity
       - forum
-      - bills
+      - finance
       - notifications
     environment:
       FRONTEND_UPSTREAM: host.docker.internal:3000
