@@ -136,6 +136,10 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      Plaid__ClientId: ${PLAID_CLIENT_ID:-}
+      Plaid__Secret: ${PLAID_SECRET:-}
+      Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
+      Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
 
   notifications:
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
@@ -185,6 +189,10 @@ services:
       - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
       - avatar_data:/var/www/avatars:ro
       - forum_media:/var/www/forum:ro
+    # INF-3: Linux hosts need host.docker.internal resolved to the gateway.
+    # Uncomment the block below on Linux (macOS/Windows Docker Desktop handles this automatically):
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
 volumes:
   pgdata:

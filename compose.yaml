@@ -105,6 +105,10 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      Plaid__ClientId: ${PLAID_CLIENT_ID:-}
+      Plaid__Secret: ${PLAID_SECRET:-}
+      Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
+      Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
 
   notifications:
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
