@@ -110,6 +110,26 @@ services:
       Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
       Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
 
+  household:
+    image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=postgres;Password=postgres}
+      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USER:-guest}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+
   notifications:
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
     ports:
@@ -130,6 +150,31 @@ services:
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
+  math:
+    image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
+    ports:
+      - "8086:8080"
+    depends_on:
+      identity:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+
+  geography:
+    image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
+    ports:
+      - "8087:8080"
+    depends_on:
+      identity:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
+
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
     environment:
@@ -139,6 +184,7 @@ services:
       - identity
       - forum
       - finance
+      - household
 
   nginx:
     image: nginx:alpine
@@ -149,6 +195,9 @@ services:
       - forum
       - finance
       - notifications
+      - household
+      - math
+      - geography
       - frontend
     environment:
       FRONTEND_UPSTREAM: frontend:3000

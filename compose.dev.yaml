@@ -55,7 +55,6 @@ services:
       - "1025:1025"
 
   identity:
-    image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
     build:
       context: ../identity
       dockerfile: Dockerfile
@@ -88,7 +87,6 @@ services:
       Storage__PublicBaseUrl: http://localhost/uploads/avatars
 
   forum:
-    image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
     build:
       context: ../forum
       dockerfile: Dockerfile
@@ -101,6 +99,12 @@ services:
         condition: service_healthy
       identity:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     volumes:
       - forum_media:/data/forum
     environment:
@@ -115,7 +119,6 @@ services:
       Media__PublicBaseUrl: http://localhost/uploads/forum
 
   finance:
-    image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
     build:
       context: ../finance
       dockerfile: Dockerfile
@@ -128,6 +131,12 @@ services:
         condition: service_healthy
       identity:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -142,7 +151,6 @@ services:
       Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
 
   notifications:
-    image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
     build:
       context: ../notifications
       dockerfile: Dockerfile
@@ -170,15 +178,94 @@ services:
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
+  household:
+    build:
+      context: ../household
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=postgres;Password=postgres}
+      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USER:-guest}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+
+  math:
+    build:
+      context: ../math
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8080"
+    depends_on:
+      identity:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+
+  geography:
+    build:
+      context: ../geography
+      dockerfile: Dockerfile
+    ports:
+      - "8087:8080"
+    depends_on:
+      identity:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
+
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
     depends_on:
-      - identity
-      - forum
-      - finance
-      - notifications
+      identity:
+        condition: service_healthy
+      forum:
+        condition: service_healthy
+      finance:
+        condition: service_healthy
+      notifications:
+        condition: service_healthy
+      household:
+        condition: service_healthy
+      math:
+        condition: service_healthy
+      geography:
+        condition: service_healthy
     environment:
       FRONTEND_UPSTREAM: host.docker.internal:3000
     command: >

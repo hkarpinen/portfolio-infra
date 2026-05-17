@@ -30,6 +30,21 @@ http {
         keepalive 32;
     }
 
+    upstream household_upstream {
+        server household:8080;
+        keepalive 32;
+    }
+
+    upstream math_upstream {
+        server math:8080;
+        keepalive 32;
+    }
+
+    upstream geography_upstream {
+        server geography:8080;
+        keepalive 32;
+    }
+
     upstream frontend_upstream {
         server ${FRONTEND_UPSTREAM};
         keepalive 16;
@@ -117,6 +132,39 @@ http {
         # Notifications API
         location /api/notifications/ {
             proxy_pass http://notifications_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Household API
+        location /api/households/ {
+            proxy_pass http://household_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Math API
+        location /api/math/ {
+            proxy_pass http://math_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Geography API
+        location /api/geography/ {
+            proxy_pass http://geography_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
             proxy_set_header Host $host;
