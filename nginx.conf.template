@@ -10,6 +10,24 @@ http {
     keepalive_timeout 65;
     client_max_body_size 25M;
 
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/javascript application/x-javascript text/xml application/xml application/rss+xml;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_vary on;
+
+    # Rate limiting — auth endpoints are tight, everything else gets a generous allowance
+    limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=200r/m;
+    limit_req_status 429;
+
+    # INF-1: map SSE paths to their upstream so a single location block handles both
+    map $uri $sse_upstream {
+        ~^/api/forum/.+/events$   http://forum_upstream;
+        ~^/api/notifications/stream http://notifications_upstream;
+        default                   "";
+    }
+
     upstream identity_upstream {
         server identity:8080;
         keepalive 32;
@@ -17,7 +35,7 @@ http {
 
     upstream forum_upstream {
         server forum:8080;
-        keepalive 32;
+        keepalive 4;
     }
 
     upstream finance_upstream {
@@ -27,7 +45,7 @@ http {
 
     upstream notifications_upstream {
         server notifications:8080;
-        keepalive 32;
+        keepalive 4;
     }
 
     upstream household_upstream {
@@ -50,28 +68,61 @@ http {
         keepalive 16;
     }
 
+    # HTTP: redirect everything to HTTPS, but let ACME challenges through for cert renewal
     server {
         listen 80;
-        server_name localhost;
+        server_name hankkarpinen.com www.hankkarpinen.com;
 
-        # User avatars — served directly from the volume written by Identity
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # HTTPS
+    server {
+        listen 443 ssl http2;
+        server_name hankkarpinen.com www.hankkarpinen.com;
+
+        ssl_certificate     /etc/letsencrypt/live/hankkarpinen.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/hankkarpinen.com/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        ssl_ciphers         HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+        ssl_session_cache   shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        # Security headers
+        add_header X-Content-Type-Options  "nosniff" always;
+        add_header X-Frame-Options         "SAMEORIGIN" always;
+        add_header Referrer-Policy         "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
         location /uploads/avatars/ {
             alias /var/www/avatars/;
-            add_header Cache-Control "public, max-age=3600";
-            add_header Content-Disposition "inline";
+            add_header Cache-Control        "public, max-age=3600";
+            add_header Content-Disposition  "inline";
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options      "SAMEORIGIN" always;
             try_files $uri =404;
         }
 
-        # Forum media (community images, etc.) — served from the forum upload volume
         location /uploads/forum/ {
             alias /var/www/forum/;
-            add_header Cache-Control "public, max-age=3600";
-            add_header Content-Disposition "inline";
+            add_header Cache-Control        "public, max-age=3600";
+            add_header Content-Disposition  "inline";
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-Frame-Options      "SAMEORIGIN" always;
             try_files $uri =404;
         }
 
-        # Identity API
         location /api/identity/ {
+            # Tighter rate limit on auth endpoints
+            limit_req zone=auth_limit burst=5 nodelay;
+
             proxy_pass http://identity_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -81,21 +132,23 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Forum API — SSE routes (must come before general forum route)
-        location ~ ^/api/forum/.+/events$ {
-            proxy_pass http://forum_upstream;
+        # INF-1: unified SSE location for forum events + notifications stream
+        # INF-2: 90s timeouts — EventSource reconnects automatically on expiry
+        location ~ ^/api/(forum/.+/events|notifications/stream)$ {
+            proxy_pass $sse_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_buffering off;
             proxy_cache off;
-            proxy_read_timeout 86400s;
-            proxy_send_timeout 86400s;
+            proxy_read_timeout 90s;
+            proxy_send_timeout 90s;
         }
 
-        # Forum API
         location /api/forum/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
             proxy_pass http://forum_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -105,8 +158,9 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Bills API
         location /api/finance/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
             proxy_pass http://finance_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -116,32 +170,9 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Notifications API — SSE stream
-        location /api/notifications/stream {
-            proxy_pass http://notifications_upstream;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_read_timeout 86400s;
-            proxy_send_timeout 86400s;
-        }
-
-        # Notifications API
-        location /api/notifications/ {
-            proxy_pass http://notifications_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # Household API
         location /api/households/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
             proxy_pass http://household_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -151,8 +182,21 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Math API
+        location /api/notifications/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
+            proxy_pass http://notifications_upstream;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
         location /api/math/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
             proxy_pass http://math_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -162,8 +206,9 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Geography API
         location /api/geography/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
             proxy_pass http://geography_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
@@ -173,7 +218,6 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # Frontend — Next.js SSR with proper headers
         location / {
             proxy_pass http://frontend_upstream;
             proxy_set_header Host $host;

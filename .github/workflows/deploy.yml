@@ -1,0 +1,28 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          envs: DEPLOY_ENV
+          script: |
+            cd ~/portfolio/infra
+            printf '%s' "$DEPLOY_ENV" > .env
+            docker compose pull
+            docker compose up -d
+        env:
+          DEPLOY_ENV: ${{ secrets.DEPLOY_ENV }}

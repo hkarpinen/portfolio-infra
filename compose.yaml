@@ -3,9 +3,14 @@ services:
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_password}
+      FORUM_DB_PASSWORD: ${FORUM_DB_PASSWORD:-forum_password}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance_password}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications_password}
+      HOUSEHOLD_DB_PASSWORD: ${HOUSEHOLD_DB_PASSWORD:-household_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -14,9 +19,8 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    # No host ports — accessible only inside the Docker network.
+    # To inspect the management UI on the VPS: ssh -L 15672:localhost:15672 deploy@YOUR_VPS
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
@@ -26,16 +30,17 @@ services:
       timeout: 5s
       retries: 5
 
+  # Mail trap — dev only. Production uses a real SMTP relay via EMAIL_* env vars.
   mailpit:
     image: axllent/mailpit:latest
+    profiles: ["dev"]
     ports:
       - "8025:8025"
       - "1025:1025"
 
   identity:
     image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
-    ports:
-      - "8081:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,22 +55,24 @@ services:
     volumes:
       - avatar_data:/data/avatars
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      Email__Host: mailpit
-      Email__Port: "1025"
+      Email__Host: ${EMAIL_HOST:-localhost}
+      Email__Port: ${EMAIL_PORT:-25}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
       Storage__LocalPath: /data/avatars
-      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-http://localhost/uploads/avatars}
+      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   forum:
     image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
-    ports:
-      - "8082:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,20 +83,20 @@ services:
     volumes:
       - forum_media:/data/forum
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
       Media__RootPath: /data/forum
-      Media__PublicBaseUrl: ${MEDIA_PUBLIC_BASE_URL:-http://localhost/uploads/forum}
+      Media__PublicBaseUrl: ${MEDIA_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/forum}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   finance:
     image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
-    ports:
-      - "8083:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,9 +105,9 @@ services:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -109,11 +116,11 @@ services:
       Plaid__Secret: ${PLAID_SECRET:-}
       Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
       Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   household:
     image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
-    ports:
-      - "8085:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,18 +129,18 @@ services:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=household_user;Password=household_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   notifications:
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
-    ports:
-      - "8084:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,43 +149,44 @@ services:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   math:
     image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
-    ports:
-      - "8086:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   geography:
     image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
-    ports:
-      - "8087:8080"
+    # No host ports — all traffic routed through nginx.
     depends_on:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
+      Cors__AllowedOrigins__0: ${CORS_ORIGIN:-https://hankkarpinen.com}
 
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost
+      NEXT_PUBLIC_API_URL: https://hankkarpinen.com
       INTERNAL_API_URL: http://nginx
     depends_on:
       - identity
@@ -190,6 +198,7 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - identity
       - forum
@@ -209,8 +218,11 @@ services:
       - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
       - avatar_data:/var/www/avatars:ro
       - forum_media:/var/www/forum:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot
 
 volumes:
   pgdata:
   avatar_data:
   forum_media:
+  certbot_webroot:
