@@ -1,22 +1,13 @@
 # Standalone dev stack — run with:
 #   docker compose -f compose.dev.yaml up -d
 #
-# Runs infrastructure, backends, and nginx.
+# Runs infrastructure and backends only. No nginx.
 # The frontend is NOT containerised in dev — run it locally:
 #   cd ../frontend && npm run dev
 #
-# nginx is required for two reasons even in dev:
-#   1. Serving /uploads/* from Docker named volumes that the local Next.js
-#      process cannot access directly.
-#   2. Proxying SSE endpoints (/api/notifications/stream, /api/forum/.+/events)
-#      without buffering — the Next.js dev server rewrites buffer the response
-#      body, which breaks event streaming.
-#
-# Regular /api/* traffic uses Next.js rewrites (next.config.mjs) and bypasses
-# nginx entirely. SSE and upload traffic hits localhost:80 → nginx directly.
-#
-# Linux users: add `extra_hosts: [host.docker.internal:host-gateway]` to the
-# nginx service below, or pass --add-host=host.docker.internal:host-gateway.
+# Upload files are written to ./uploads/ (bind-mounted into the containers)
+# and served by the Next.js dev server via a /uploads/* rewrite.
+# All API traffic uses Next.js rewrites (next.config.mjs) → direct to each backend port.
 
 services:
   postgres:
@@ -77,7 +68,7 @@ services:
       retries: 15
       start_period: 30s
     volumes:
-      - avatar_data:/data/avatars
+      - ./uploads/avatars:/data/avatars
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -89,7 +80,7 @@ services:
       Email__Host: mailpit
       Email__Port: "1025"
       Storage__LocalPath: /data/avatars
-      Storage__PublicBaseUrl: http://localhost/uploads/avatars
+      Storage__PublicBaseUrl: http://localhost:3000/uploads/avatars
 
   forum:
     build:
@@ -111,7 +102,7 @@ services:
       retries: 15
       start_period: 30s
     volumes:
-      - forum_media:/data/forum
+      - ./uploads/forum:/data/forum
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -121,7 +112,7 @@ services:
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
       Media__RootPath: /data/forum
-      Media__PublicBaseUrl: http://localhost/uploads/forum
+      Media__PublicBaseUrl: http://localhost:3000/uploads/forum
 
   finance:
     build:
@@ -252,35 +243,5 @@ services:
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    depends_on:
-      identity:
-        condition: service_healthy
-      forum:
-        condition: service_healthy
-      finance:
-        condition: service_healthy
-      notifications:
-        condition: service_healthy
-      household:
-        condition: service_healthy
-      math:
-        condition: service_healthy
-      geography:
-        condition: service_healthy
-    volumes:
-      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
-      - avatar_data:/var/www/avatars:ro
-      - forum_media:/var/www/forum:ro
-    # INF-3: Linux hosts need host.docker.internal resolved to the gateway.
-    # Uncomment the block below on Linux (macOS/Windows Docker Desktop handles this automatically):
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
-
 volumes:
   pgdata:
-  avatar_data:
-  forum_media:
