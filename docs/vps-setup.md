@@ -276,9 +276,26 @@ http://YOUR_VPS_IP
 
 The nginx config is already set up for HTTPS — it just needs the certificates to exist before the stack starts.
 
+### Prerequisites: DNS must point to this VPS first
+
+Certbot proves domain ownership by having the CA download a challenge file from your server on port 80. **If the domain doesn't resolve to this VPS yet, certbot will fail with a "challenge files" error.**
+
+1. Buy the domain and go to your registrar's DNS settings (or your DNS provider — Cloudflare, Route 53, etc.)
+2. Add an **A record** pointing `hankkarpinen.com` → your VPS IP
+3. Add another **A record** (or CNAME) for `www.hankkarpinen.com` → your VPS IP
+4. Wait for DNS to propagate — usually a few minutes, sometimes up to an hour
+
+Verify before proceeding:
+
+```bash
+# Should return your VPS IP
+dig +short hankkarpinen.com
+dig +short www.hankkarpinen.com
+```
+
 ### First-time certificate issuance
 
-Obtain certs using certbot standalone **before** starting the full stack (port 80 must be free):
+Once DNS resolves correctly, obtain certs using certbot standalone **before** starting the full stack (port 80 must be free):
 
 ```bash
 sudo apt install -y certbot
