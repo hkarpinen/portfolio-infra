@@ -218,6 +218,19 @@ cd ~/portfolio2/infra
 
 ---
 
+## 7. Create the `.env` File
+
+The GitHub Actions workflow writes `.env` automatically on every push — but the very first deploy happens manually, so you need to create it once.
+
+Copy the example and fill in the same values you put in the `DEPLOY_ENV` secret:
+
+```bash
+cp ~/portfolio2/infra/.env.example ~/portfolio2/infra/.env
+nano ~/portfolio2/infra/.env
+```
+
+---
+
 ## 8. Pull Images and Start the Stack
 
 ```bash
@@ -239,7 +252,7 @@ docker compose logs identity --tail=50
 
 ---
 
-## 8. Verify the Deployment
+## 9. Verify the Deployment
 
 ```bash
 # Frontend via nginx
@@ -259,7 +272,7 @@ http://YOUR_VPS_IP
 
 ---
 
-## 9. HTTPS with Let's Encrypt
+## 10. HTTPS with Let's Encrypt
 
 The nginx config is already set up for HTTPS — it just needs the certificates to exist before the stack starts.
 
@@ -290,7 +303,7 @@ Certbot installs a systemd timer that auto-renews before expiry. Configure it to
 sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh > /dev/null <<'EOF'
 #!/bin/sh
-cd /home/deploy/portfolio/infra
+cd /home/deploy/portfolio2/infra
 docker compose exec nginx nginx -s reload
 EOF
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
@@ -306,7 +319,7 @@ sudo certbot renew --dry-run
 
 ---
 
-## 10. Useful Day-to-Day Commands
+## 11. Useful Day-to-Day Commands
 
 ```bash
 # View all service statuses
