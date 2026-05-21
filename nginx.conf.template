@@ -94,7 +94,7 @@ http {
         }
 
         location / {
-            return 301 https://hankkarpinen.com$request_uri;
+            return 308 https://hankkarpinen.com$request_uri;
         }
     }
 
@@ -111,7 +111,7 @@ http {
         ssl_session_cache   shared:SSL:10m;
         ssl_session_timeout 10m;
 
-        return 301 https://hankkarpinen.com$request_uri;
+        return 308 https://hankkarpinen.com$request_uri;
     }
 
     server {
