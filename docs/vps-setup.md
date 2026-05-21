@@ -129,33 +129,13 @@ cd ~/portfolio2/infra
 
 ## 6. Configure Environment Variables
 
+The `.env` file is written automatically by the GitHub Actions deploy workflow from the `DEPLOY_ENV` secret — you do not need to create it manually on the VPS. See [step 11](#11-github-actions-auto-deploy) for how to populate that secret.
+
+If you are doing a **one-off manual deployment** without CI, create it yourself:
+
 ```bash
 cp .env.example .env
 nano .env
-```
-
-Fill in the following — everything else has safe defaults for getting started:
-
-| Variable | What to set |
-|---|---|
-| `POSTGRES_PASSWORD` | A strong random password (superuser — init only) |
-| `IDENTITY_DB_PASSWORD` … `HOUSEHOLD_DB_PASSWORD` | One strong password per service (different from superuser) |
-| `JWT_SECRET` | A random string, **at least 32 characters** |
-| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | Change from defaults — do **not** use `guest/guest` |
-| `IDENTITY_CONN` … `HOUSEHOLD_CONN` | Use the per-service users from `.env.example`, **not** the postgres superuser |
-| `EMAIL_HOST` / `EMAIL_USERNAME` / `EMAIL_PASSWORD` | Real SMTP relay (Mailgun, Postmark, SES, etc.) |
-| `OPENWEATHERMAP_API_KEY` | From [openweathermap.org/api](https://openweathermap.org/api) (free tier) |
-| `PLAID_CLIENT_ID` / `PLAID_SECRET` | From [dashboard.plaid.com](https://dashboard.plaid.com) (optional) |
-| `CORS_ORIGIN` | `https://hankkarpinen.com` |
-
-To generate strong random values:
-
-```bash
-# JWT secret
-openssl rand -base64 48
-
-# DB passwords
-openssl rand -hex 20
 ```
 
 ---
@@ -316,3 +296,27 @@ Paste the entire output, including the `-----BEGIN OPENSSH PRIVATE KEY-----` and
 ### DEPLOY_ENV
 
 Paste the full contents of your `infra/.env` file. The workflow writes it to `.env` on the VPS before running Docker Compose, so the VPS copy is always in sync with whatever is in the secret.
+
+Fill in the following — everything else has safe defaults for getting started:
+
+| Variable | What to set |
+|---|---|
+| `POSTGRES_PASSWORD` | A strong random password (superuser — init only) |
+| `IDENTITY_DB_PASSWORD` … `HOUSEHOLD_DB_PASSWORD` | One strong password per service (different from superuser) |
+| `JWT_SECRET` | A random string, **at least 32 characters** |
+| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | Change from defaults — do **not** use `guest/guest` |
+| `IDENTITY_CONN` … `HOUSEHOLD_CONN` | Use the per-service users from `.env.example`, **not** the postgres superuser |
+| `EMAIL_HOST` / `EMAIL_USERNAME` / `EMAIL_PASSWORD` | Real SMTP relay (Mailgun, Postmark, SES, etc.) |
+| `OPENWEATHERMAP_API_KEY` | From [openweathermap.org/api](https://openweathermap.org/api) (free tier) |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | From [dashboard.plaid.com](https://dashboard.plaid.com) (optional) |
+| `CORS_ORIGIN` | Your public domain, e.g. `https://hankkarpinen.com` |
+
+To generate strong random values:
+
+```bash
+# JWT secret
+openssl rand -base64 48
+
+# DB passwords
+openssl rand -hex 20
+```
