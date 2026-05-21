@@ -118,7 +118,103 @@ docker run --rm hello-world
 
 ---
 
-## 5. Clone the Repository
+## 5. Configure GitHub Actions Auto-Deploy
+
+The infra repo includes `.github/workflows/deploy.yml`, which SSHs into the VPS and runs `docker compose pull && docker compose up -d` on every push to `main`. Set this up now — before the first deploy — so pushes to `main` keep the VPS in sync automatically.
+
+Go to the repo's **Settings → Secrets and variables → Actions** and add four secrets:
+
+| Secret | Value |
+|---|---|
+| `DEPLOY_HOST` | VPS IP address or hostname |
+| `DEPLOY_USER` | SSH username (e.g. `deploy`) |
+| `DEPLOY_KEY` | Private SSH key (see below) |
+| `DEPLOY_ENV` | Contents of your filled-in `.env` (see below) |
+
+### Generate a deploy SSH key
+
+Run this on your local machine — do **not** reuse your personal key:
+
+```bash
+ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/github_deploy
+```
+
+Authorize the public key on the VPS:
+
+```bash
+ssh-copy-id -i ~/.ssh/github_deploy.pub deploy@YOUR_VPS_IP
+```
+
+Print the private key to paste into `DEPLOY_KEY`:
+
+```bash
+cat ~/.ssh/github_deploy
+```
+
+Include the full output including the `-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END OPENSSH PRIVATE KEY-----` lines.
+
+### DEPLOY_ENV
+
+Copy the block below into the `DEPLOY_ENV` secret and replace every `changeme` value with real credentials. The workflow writes this to `.env` on the VPS before running Docker Compose.
+
+To generate strong random values:
+
+```bash
+openssl rand -base64 48   # JWT secret
+openssl rand -hex 20      # DB passwords
+```
+
+```dotenv
+# PostgreSQL superuser (used only for init and admin)
+POSTGRES_PASSWORD=changeme
+
+# Per-service DB users
+IDENTITY_DB_PASSWORD=changeme-identity
+FORUM_DB_PASSWORD=changeme-forum
+FINANCE_DB_PASSWORD=changeme-finance
+NOTIFICATIONS_DB_PASSWORD=changeme-notifications
+HOUSEHOLD_DB_PASSWORD=changeme-household
+
+# JWT — must be at least 32 characters
+JWT_SECRET=changeme-at-least-32-chars-long!
+
+# RabbitMQ — do not use guest/guest in production
+RABBITMQ_USER=portfolio
+RABBITMQ_PASSWORD=changeme-rabbitmq
+
+# Connection strings — wired to per-service users above
+IDENTITY_CONN=Host=postgres;Database=identity_db;Username=identity_user;Password=changeme-identity
+FORUM_CONN=Host=postgres;Database=forum_db;Username=forum_user;Password=changeme-forum
+FINANCE_CONN=Host=postgres;Database=finance_db;Username=finance_user;Password=changeme-finance
+NOTIFICATIONS_CONN=Host=postgres;Database=notifications_db;Username=notifications_user;Password=changeme-notifications
+HOUSEHOLD_CONN=Host=postgres;Database=household_db;Username=household_user;Password=changeme-household
+
+# Plaid — https://dashboard.plaid.com/team/keys
+PLAID_CLIENT_ID=
+PLAID_SECRET=
+PLAID_ENVIRONMENT=sandbox
+PLAID_WEBHOOK_URL=https://hankkarpinen.com/api/finance/connections/webhook
+
+# OpenWeatherMap — https://openweathermap.org/api
+OPENWEATHERMAP_API_KEY=
+
+# SMTP relay
+EMAIL_HOST=smtp.mailgun.org
+EMAIL_PORT=587
+EMAIL_USERNAME=postmaster@hankkarpinen.com
+EMAIL_PASSWORD=changeme-smtp
+
+# Storage / media public URLs
+STORAGE_PUBLIC_BASE_URL=https://hankkarpinen.com/uploads/avatars
+MEDIA_PUBLIC_BASE_URL=https://hankkarpinen.com/uploads/forum
+
+# CORS allowed origin
+CORS_ORIGIN=https://hankkarpinen.com
+```
+
+---
+
+## 6. Clone the Repository
 
 ```bash
 git clone https://github.com/hkarpinen/portfolio2.git ~/portfolio2
@@ -127,20 +223,7 @@ cd ~/portfolio2/infra
 
 ---
 
-## 6. Configure Environment Variables
-
-The `.env` file is written automatically by the GitHub Actions deploy workflow from the `DEPLOY_ENV` secret — you do not need to create it manually on the VPS. See [step 11](#11-github-actions-auto-deploy) for how to populate that secret.
-
-If you are doing a **one-off manual deployment** without CI, create it yourself:
-
-```bash
-cp .env.example .env
-nano .env
-```
-
----
-
-## 7. Pull Images and Start the Stack
+## 8. Pull Images and Start the Stack
 
 ```bash
 docker compose pull
@@ -258,65 +341,4 @@ docker compose exec identity bash
 
 ---
 
-## 11. GitHub Actions Auto-Deploy
 
-The infra repo includes `.github/workflows/deploy.yml`, which SSHs into the VPS and runs `docker compose pull && docker compose up -d` on every push to `main`. You just need to configure four secrets in the repo's **Settings → Secrets and variables → Actions**.
-
-### Required secrets
-
-| Secret | Value |
-|---|---|
-| `DEPLOY_HOST` | VPS IP address or hostname |
-| `DEPLOY_USER` | SSH username (e.g. `deploy`) |
-| `DEPLOY_KEY` | Private SSH key (see below) |
-| `DEPLOY_ENV` | Full contents of your `.env` file |
-
-### Generate a deploy SSH key
-
-Run this on your local machine — do **not** reuse your personal key:
-
-```bash
-ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/github_deploy
-```
-
-Authorize the public key on the VPS:
-
-```bash
-ssh-copy-id -i ~/.ssh/github_deploy.pub deploy@YOUR_VPS_IP
-```
-
-Print the private key to copy into `DEPLOY_KEY`:
-
-```bash
-cat ~/.ssh/github_deploy
-```
-
-Paste the entire output, including the `-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END OPENSSH PRIVATE KEY-----` lines.
-
-### DEPLOY_ENV
-
-Paste the full contents of your `infra/.env` file. The workflow writes it to `.env` on the VPS before running Docker Compose, so the VPS copy is always in sync with whatever is in the secret.
-
-Fill in the following — everything else has safe defaults for getting started:
-
-| Variable | What to set |
-|---|---|
-| `POSTGRES_PASSWORD` | A strong random password (superuser — init only) |
-| `IDENTITY_DB_PASSWORD` … `HOUSEHOLD_DB_PASSWORD` | One strong password per service (different from superuser) |
-| `JWT_SECRET` | A random string, **at least 32 characters** |
-| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | Change from defaults — do **not** use `guest/guest` |
-| `IDENTITY_CONN` … `HOUSEHOLD_CONN` | Use the per-service users from `.env.example`, **not** the postgres superuser |
-| `EMAIL_HOST` / `EMAIL_USERNAME` / `EMAIL_PASSWORD` | Real SMTP relay (Mailgun, Postmark, SES, etc.) |
-| `OPENWEATHERMAP_API_KEY` | From [openweathermap.org/api](https://openweathermap.org/api) (free tier) |
-| `PLAID_CLIENT_ID` / `PLAID_SECRET` | From [dashboard.plaid.com](https://dashboard.plaid.com) (optional) |
-| `CORS_ORIGIN` | Your public domain, e.g. `https://hankkarpinen.com` |
-
-To generate strong random values:
-
-```bash
-# JWT secret
-openssl rand -base64 48
-
-# DB passwords
-openssl rand -hex 20
-```
