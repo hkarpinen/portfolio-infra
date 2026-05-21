@@ -201,7 +201,7 @@ services:
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
     environment:
       NEXT_PUBLIC_API_URL: https://hankkarpinen.com
-      INTERNAL_API_URL: http://nginx:8080
+      INTERNAL_API_URL: http://nginx
     depends_on:
       - identity
       - forum
@@ -213,8 +213,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    expose:
-      - "8080"
     depends_on:
       - identity
       - forum
