@@ -204,7 +204,7 @@ STORAGE_PUBLIC_BASE_URL=https://hankkarpinen.com/uploads/avatars
 MEDIA_PUBLIC_BASE_URL=https://hankkarpinen.com/uploads/forum
 
 # CORS allowed origin
-# CORS allowed origins are hardcoded in compose.yaml
+# CORS origins are set in compose.yaml (Cors__AllowedOrigins__0/1)
 ```
 
 ---
