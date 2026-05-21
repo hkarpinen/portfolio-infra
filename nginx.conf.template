@@ -68,85 +68,20 @@ http {
         keepalive 16;
     }
 
-    # Internal HTTP server — for server-side fetches from the frontend container.
-    # Matches any Host that isn't the public domain (e.g. "nginx" inside Docker).
-    # No TLS, no redirect. API paths only.
+    # Internal HTTP-only server on port 8080 — used by the frontend container
+    # for server-side API fetches. No TLS, no redirect. Not exposed to the internet.
     server {
-        listen 80 default_server;
+        listen 8080;
 
-        location /api/identity/ {
-            proxy_pass http://identity_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
+        location /api/identity/      { proxy_pass http://identity_upstream;      proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/forum/         { proxy_pass http://forum_upstream;         proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/finance/       { proxy_pass http://finance_upstream;       proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/households/    { proxy_pass http://household_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/notifications/ { proxy_pass http://notifications_upstream; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/math/          { proxy_pass http://math_upstream;          proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/geography/     { proxy_pass http://geography_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
 
-        location /api/forum/ {
-            proxy_pass http://forum_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location /api/finance/ {
-            proxy_pass http://finance_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location /api/households/ {
-            proxy_pass http://household_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location /api/notifications/ {
-            proxy_pass http://notifications_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location /api/math/ {
-            proxy_pass http://math_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location /api/geography/ {
-            proxy_pass http://geography_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto https;
-        }
-
-        location / {
-            return 444;
-        }
+        location / { return 444; }
     }
 
     # HTTP: redirect everything to HTTPS, but let ACME challenges through for cert renewal
