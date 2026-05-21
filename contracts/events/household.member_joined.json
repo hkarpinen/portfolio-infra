@@ -1,0 +1,11 @@
+{
+  "type": "household.member_joined",
+  "source": "household",
+  "payload": {
+    "membershipId": "uuid",
+    "householdId": "uuid",
+    "userId": "uuid",
+    "role": "string",
+    "joinedAt": "datetime"
+  }
+}

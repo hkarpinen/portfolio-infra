@@ -1,0 +1,12 @@
+{
+  "type": "household.household_created",
+  "source": "household",
+  "payload": {
+    "householdId": "uuid",
+    "ownerId": "uuid",
+    "name": "string",
+    "description": "string | null",
+    "currencyCode": "string",
+    "createdAt": "datetime"
+  }
+}
