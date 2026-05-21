@@ -23,9 +23,14 @@ services:
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_password}
+      FORUM_DB_PASSWORD: ${FORUM_DB_PASSWORD:-forum_password}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance_password}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications_password}
+      HOUSEHOLD_DB_PASSWORD: ${HOUSEHOLD_DB_PASSWORD:-household_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -76,7 +81,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -110,7 +115,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -140,7 +145,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -172,7 +177,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -200,7 +205,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=postgres;Password=postgres}
+      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=household_user;Password=household_password}
       Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -266,14 +271,8 @@ services:
         condition: service_healthy
       geography:
         condition: service_healthy
-    environment:
-      FRONTEND_UPSTREAM: host.docker.internal:3000
-    command: >
-      /bin/sh -c
-      "envsubst '$$FRONTEND_UPSTREAM' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
-      && exec nginx -g 'daemon off;'"
     volumes:
-      - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./nginx.dev.conf:/etc/nginx/nginx.conf:ro
       - avatar_data:/var/www/avatars:ro
       - forum_media:/var/www/forum:ro
     # INF-3: Linux hosts need host.docker.internal resolved to the gateway.
