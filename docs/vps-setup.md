@@ -133,19 +133,14 @@ Go to the repo's **Settings → Secrets and variables → Actions** and add four
 
 ### Generate a deploy SSH key
 
-Run this on your local machine — do **not** reuse your personal key:
+Run this on the VPS — do **not** reuse your personal key:
 
 ```bash
 ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/github_deploy
+cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
 ```
 
-Authorize the public key on the VPS:
-
-```bash
-ssh-copy-id -i ~/.ssh/github_deploy.pub deploy@YOUR_VPS_IP
-```
-
-Print the private key to paste into `DEPLOY_KEY`:
+Then print the private key to paste into `DEPLOY_KEY`:
 
 ```bash
 cat ~/.ssh/github_deploy
