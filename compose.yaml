@@ -72,6 +72,7 @@ services:
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
 
+
   forum:
     image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
     # No host ports — all traffic routed through nginx.
@@ -97,6 +98,7 @@ services:
 
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
+
 
   finance:
     image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
@@ -124,6 +126,7 @@ services:
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
 
+
   household:
     image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
     # No host ports — all traffic routed through nginx.
@@ -145,6 +148,7 @@ services:
 
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
+
 
   notifications:
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
@@ -168,6 +172,7 @@ services:
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
 
+
   math:
     image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
     # No host ports — all traffic routed through nginx.
@@ -181,6 +186,7 @@ services:
 
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
+
 
   geography:
     image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
@@ -196,6 +202,7 @@ services:
 
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
+
 
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
