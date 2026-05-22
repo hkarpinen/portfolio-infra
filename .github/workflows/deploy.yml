@@ -20,7 +20,7 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           envs: DEPLOY_ENV
           script: |
-            cd ~/portfolio/infra
+            cd ${{ secrets.DEPLOY_PATH }}
             printf '%s' "$DEPLOY_ENV" > .env
             docker compose pull
             docker compose up -d
