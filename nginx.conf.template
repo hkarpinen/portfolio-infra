@@ -73,13 +73,13 @@ http {
     server {
         listen 8080;
 
-        location /api/identity/      { proxy_pass http://identity_upstream;      proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/forum/         { proxy_pass http://forum_upstream;         proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/finance/       { proxy_pass http://finance_upstream;       proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/households/    { proxy_pass http://household_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/notifications/ { proxy_pass http://notifications_upstream; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/math/          { proxy_pass http://math_upstream;          proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/geography/     { proxy_pass http://geography_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/identity      { proxy_pass http://identity_upstream;      proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/forum         { proxy_pass http://forum_upstream;         proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/finance       { proxy_pass http://finance_upstream;       proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/households    { proxy_pass http://household_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/notifications { proxy_pass http://notifications_upstream; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/math          { proxy_pass http://math_upstream;          proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
+        location /api/geography     { proxy_pass http://geography_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
 
         location / { return 444; }
     }
@@ -150,7 +150,7 @@ http {
             try_files $uri =404;
         }
 
-        location /api/identity/ {
+        location /api/identity {
             # Tighter rate limit on auth endpoints
             limit_req zone=auth_limit burst=5 nodelay;
 
@@ -177,7 +177,7 @@ http {
             proxy_send_timeout 90s;
         }
 
-        location /api/forum/ {
+        location /api/forum {
             limit_req zone=api_limit burst=20 nodelay;
 
             proxy_pass http://forum_upstream;
@@ -189,7 +189,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/finance/ {
+        location /api/finance {
             limit_req zone=api_limit burst=20 nodelay;
 
             proxy_pass http://finance_upstream;
@@ -201,7 +201,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/households/ {
+        location /api/households {
             limit_req zone=api_limit burst=20 nodelay;
 
             proxy_pass http://household_upstream;
@@ -213,7 +213,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/notifications/ {
+        location /api/notifications {
             limit_req zone=api_limit burst=20 nodelay;
 
             proxy_pass http://notifications_upstream;
@@ -225,7 +225,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/math/ {
+        location /api/math {
             limit_req zone=api_limit burst=20 nodelay;
 
             proxy_pass http://math_upstream;
@@ -237,7 +237,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/geography/ {
+        location /api/geography {
             limit_req zone=api_limit burst=20 nodelay;
 
             proxy_pass http://geography_upstream;
