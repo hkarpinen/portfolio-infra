@@ -71,6 +71,7 @@ services:
       Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
       Storage__LocalPath: /data/avatars
       Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
+      Recaptcha__SecretKey: ${RECAPTCHA_SECRET_KEY:-}
 
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
@@ -212,6 +213,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: https://hankkarpinen.com
       INTERNAL_API_URL: http://nginx:8080
+      NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
     depends_on:
       - identity
       - forum
