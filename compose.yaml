@@ -66,6 +66,9 @@ services:
       Email__Port: ${EMAIL_PORT:-25}
       Email__Username: ${EMAIL_USERNAME:-}
       Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@hankkarpinen.com}
+      Email__FromName: ${EMAIL_FROM_NAME:-hankkarpinen.com}
+      Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
       Storage__LocalPath: /data/avatars
       Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
 

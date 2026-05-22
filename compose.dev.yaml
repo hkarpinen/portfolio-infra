@@ -79,6 +79,7 @@ services:
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
       Email__Host: mailpit
       Email__Port: "1025"
+      Email__BaseUrl: http://localhost:3000
       Storage__LocalPath: /data/avatars
       Storage__PublicBaseUrl: http://localhost:3000/uploads/avatars
 
