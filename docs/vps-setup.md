@@ -120,37 +120,76 @@ docker run --rm hello-world
 
 ## 5. Configure GitHub Actions Auto-Deploy
 
-The infra repo includes `.github/workflows/deploy.yml`, which SSHs into the VPS and runs `docker compose pull && docker compose up -d` on every push to `main`. Set this up now — before the first deploy — so pushes to `main` keep the VPS in sync automatically.
+Run appleboy/ssh-action@v1.0.3
+/usr/bin/docker run --name b1c2d0f3e093feec4adb91abbca76f725622_999dfb --label 33b1c2 --workdir /github/workspace --rm -e "INPUT_HOST" -e "INPUT_USERNAME" -e "INPUT_KEY" -e "INPUT_SCRIPT" -e "INPUT_PORT" -e "INPUT_PASSPHRASE" -e "INPUT_PASSWORD" -e "INPUT_SYNC" -e "INPUT_USE_INSECURE_CIPHER" -e "INPUT_CIPHER" -e "INPUT_TIMEOUT" -e "INPUT_COMMAND_TIMEOUT" -e "INPUT_KEY_PATH" -e "INPUT_FINGERPRINT" -e "INPUT_PROXY_HOST" -e "INPUT_PROXY_PORT" -e "INPUT_PROXY_USERNAME" -e "INPUT_PROXY_PASSWORD" -e "INPUT_PROXY_PASSPHRASE" -e "INPUT_PROXY_TIMEOUT" -e "INPUT_PROXY_KEY" -e "INPUT_PROXY_KEY_PATH" -e "INPUT_PROXY_FINGERPRINT" -e "INPUT_PROXY_CIPHER" -e "INPUT_PROXY_USE_INSECURE_CIPHER" -e "INPUT_SCRIPT_STOP" -e "INPUT_ENVS" -e "INPUT_ENVS_FORMAT" -e "INPUT_DEBUG" -e "INPUT_ALLENVS" -e "INPUT_REQUEST_PTY" -e "HOME" -e "GITHUB_JOB" -e "GITHUB_REF" -e "GITHUB_SHA" -e "GITHUB_REPOSITORY" -e "GITHUB_REPOSITORY_OWNER" -e "GITHUB_REPOSITORY_OWNER_ID" -e "GITHUB_RUN_ID" -e "GITHUB_RUN_NUMBER" -e "GITHUB_RETENTION_DAYS" -e "GITHUB_RUN_ATTEMPT" -e "GITHUB_ACTOR_ID" -e "GITHUB_ACTOR" -e "GITHUB_WORKFLOW" -e "GITHUB_HEAD_REF" -e "GITHUB_BASE_REF" -e "GITHUB_EVENT_NAME" -e "GITHUB_SERVER_URL" -e "GITHUB_API_URL" -e "GITHUB_GRAPHQL_URL" -e "GITHUB_REF_NAME" -e "GITHUB_REF_PROTECTED" -e "GITHUB_REF_TYPE" -e "GITHUB_WORKFLOW_REF" -e "GITHUB_WORKFLOW_SHA" -e "GITHUB_REPOSITORY_ID" -e "GITHUB_TRIGGERING_ACTOR" -e "GITHUB_WORKSPACE" -e "GITHUB_ACTION" -e "GITHUB_EVENT_PATH" -e "GITHUB_ACTION_REPOSITORY" -e "GITHUB_ACTION_REF" -e "GITHUB_PATH" -e "GITHUB_ENV" -e "GITHUB_STEP_SUMMARY" -e "GITHUB_STATE" -e "GITHUB_OUTPUT" -e "RUNNER_OS" -e "RUNNER_ARCH" -e "RUNNER_NAME" -e "RUNNER_ENVIRONMENT" -e "RUNNER_TOOL_CACHE" -e "RUNNER_TEMP" -e "RUNNER_WORKSPACE" -e "ACTIONS_RUNTIME_URL" -e "ACTIONS_RUNTIME_TOKEN" -e "ACTIONS_CACHE_URL" -e "ACTIONS_RESULTS_URL" -e "ACTIONS_ORCHESTRATION_ID" -e GITHUB_ACTIONS=true -e CI=true -v "/var/run/docker.sock":"/var/run/docker.sock" -v "/home/runner/work/_temp":"/github/runner_temp" -v "/home/runner/work/_temp/_github_home":"/github/home" -v "/home/runner/work/_temp/_github_workflow":"/github/workflow" -v "/home/runner/work/_temp/_runner_file_commands":"/github/file_commands" -v "/home/runner/work/portfolio-forum/portfolio-forum":"/github/workspace" 33b1c2:d0f3e093feec4adb91abbca76f725622
+======CMD======
+cd ***
+docker compose pull forum
+docker compose up -d --no-deps --force-recreate forum
 
-Go to the repo's **Settings → Secrets and variables → Actions** and add four secrets:
+======END======
+2026/05/22 04:49:07 ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey], no supported methods remainThere are two layers of automated deployment:
+
+1. **`portfolio-infra`** — any push to `main` in this repo runs `docker compose pull && docker compose up -d` to pick up config changes and any updated images.
+2. **Per-service repos** (`portfolio-finance`, `portfolio-forum`, etc.) — each has its own `deploy.yml` that triggers after its `Build & Publish` workflow succeeds, SSHes in, and restarts **only that one container**.
+
+### SSH keys — generate on the server, one per service
+
+SSH in as the **`deploy` user** (not root) and generate one keypair per service. Separate keys mean a single compromised secret only affects one service.
+
+```bash
+for svc in infra identity forum finance household notifications math geography frontend; do
+  ssh-keygen -t ed25519 -C "github-deploy-${svc}" -f ~/.ssh/deploy_${svc} -N ""
+  cat ~/.ssh/deploy_${svc}.pub >> ~/.ssh/authorized_keys
+done
+```
+
+The public keys are now already authorised. Next, print each private key to copy into GitHub:
+
+```bash
+for svc in infra identity forum finance household notifications math geography frontend; do
+  echo "=== $svc ===" && cat ~/.ssh/deploy_${svc}
+done
+```
+
+Once each private key is saved in GitHub secrets, **delete the private keys from the server** — they have no reason to live there:
+
+```bash
+rm ~/.ssh/deploy_*
+```
+
+### Add secrets to each GitHub repo
+
+Go to **Settings → Secrets and variables → Actions → New repository secret** in each repo.
+
+> **How to navigate there:** open the repo on GitHub → click **Settings** (top tab) → **Secrets and variables** (left sidebar) → **Actions** → **New repository secret**.
+
+#### `portfolio-infra` — 5 secrets
+
+Add these at `https://github.com/hkarpinen/portfolio-infra/settings/secrets/actions`:
 
 | Secret | Value |
 |---|---|
-| `DEPLOY_HOST` | VPS IP address or hostname |
-| `DEPLOY_USER` | SSH username (e.g. `deploy`) |
-| `DEPLOY_KEY` | Private SSH key (see below) |
-| `DEPLOY_ENV` | Contents of your filled-in `.env` (see below) |
+| `DEPLOY_HOST` | VPS IP or hostname (e.g. `hankkarpinen.com`) |
+| `DEPLOY_USER` | SSH user (e.g. `deploy`) |
+| `DEPLOY_KEY` | Contents of `~/.ssh/deploy_infra` (the private key you generated above) |
+| `DEPLOY_PATH` | Absolute path to the infra folder — e.g. `/home/deploy/portfolio2/infra` |
+| `DEPLOY_ENV` | Full contents of your filled-in `.env` — see the template below. The workflow writes this file to the server on every push to `main`. |
 
-### Generate a deploy SSH key
+#### Per-service repos — 4 secrets each
 
-Run this on the VPS — do **not** reuse your personal key:
+Add the following to each repo at `https://github.com/hkarpinen/portfolio-<service>/settings/secrets/actions`:
 
-```bash
-ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/github_deploy
-cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
-```
+Services: `portfolio-identity`, `portfolio-forum`, `portfolio-finance`, `portfolio-household`, `portfolio-notifications`, `portfolio-math`, `portfolio-geography`, `portfolio-frontend`.
 
-Then print the private key to paste into `DEPLOY_KEY`:
+| Secret | Value |
+|---|---|
+| `DEPLOY_HOST` | Same VPS IP or hostname |
+| `DEPLOY_USER` | Same SSH user |
+| `DEPLOY_KEY` | The private key **specific to that service** — e.g. contents of `~/.ssh/deploy_finance` for the finance repo |
+| `DEPLOY_PATH` | Absolute path to the infra folder — e.g. `/home/deploy/portfolio2/infra` (must be absolute; `~` does not expand when passed via a secret) |
 
-```bash
-cat ~/.ssh/github_deploy
-```
-
-Include the full output including the `-----BEGIN OPENSSH PRIVATE KEY-----` and `-----END OPENSSH PRIVATE KEY-----` lines.
-
-### DEPLOY_ENV
-
-Copy the block below into the `DEPLOY_ENV` secret and replace every `changeme` value with real credentials. The workflow writes this to `.env` on the VPS before running Docker Compose.
+### DEPLOY_ENV template
 
 To generate strong random values:
 
@@ -198,13 +237,20 @@ EMAIL_HOST=smtp.mailgun.org
 EMAIL_PORT=587
 EMAIL_USERNAME=postmaster@hankkarpinen.com
 EMAIL_PASSWORD=changeme-smtp
+EMAIL_FROM_ADDRESS=noreply@hankkarpinen.com
+EMAIL_FROM_NAME=hankkarpinen.com
+EMAIL_BASE_URL=https://hankkarpinen.com
 
 # Storage / media public URLs
 STORAGE_PUBLIC_BASE_URL=https://hankkarpinen.com/uploads/avatars
 MEDIA_PUBLIC_BASE_URL=https://hankkarpinen.com/uploads/forum
 
-# CORS allowed origin
-# CORS origins are set in compose.yaml (Cors__AllowedOrigins__0/1)
+# reCAPTCHA — https://www.google.com/recaptcha/admin
+RECAPTCHA_SITE_KEY=
+RECAPTCHA_SECRET_KEY=
+
+# CORS allowed origins (nginx routes all traffic so these match the public domain)
+CORS_ORIGIN=https://hankkarpinen.com
 ```
 
 ---
