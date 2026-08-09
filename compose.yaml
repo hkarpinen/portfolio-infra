@@ -62,13 +62,6 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      Email__Host: ${EMAIL_HOST:-localhost}
-      Email__Port: ${EMAIL_PORT:-25}
-      Email__Username: ${EMAIL_USERNAME:-}
-      Email__Password: ${EMAIL_PASSWORD:-}
-      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@hankkarpinen.com}
-      Email__FromName: ${EMAIL_FROM_NAME:-hankkarpinen.com}
-      Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
       Storage__LocalPath: /data/avatars
       Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
       Recaptcha__SecretKey: ${RECAPTCHA_SECRET_KEY:-}
@@ -172,6 +165,17 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+
+      # This is the only service that sends mail. Without these it falls back to
+      # appsettings.json — localhost:1025, which nothing listens on inside the
+      # container — so every confirmation and reset mail dead-letters.
+      Email__Host: ${EMAIL_HOST:-localhost}
+      Email__Port: ${EMAIL_PORT:-25}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@hankkarpinen.com}
+      Email__FromName: ${EMAIL_FROM_NAME:-hankkarpinen.com}
+      Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
 
       Cors__AllowedOrigins__0: https://hankkarpinen.com
       Cors__AllowedOrigins__1: https://www.hankkarpinen.com
