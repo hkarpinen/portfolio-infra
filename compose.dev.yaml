@@ -1,13 +1,13 @@
 # Standalone dev stack — run with:
 #   docker compose -f compose.dev.yaml up -d
 #
-# Runs infrastructure and backends only. No nginx.
-# The frontend is NOT containerised in dev — run it locally:
+# Runs infrastructure, the backends and the gateway. The frontend is NOT containerised in dev —
+# run it locally:
 #   cd ../frontend && npm run dev
 #
-# Upload files are written to ./uploads/ (bind-mounted into the containers)
-# and served by the Next.js dev server via a /uploads/* rewrite.
-# All API traffic uses Next.js rewrites (next.config.mjs) → direct to each backend port.
+# next.config.mjs rewrites /api/* to the gateway on :8088; the gateway holds the only route table.
+# Upload files are written to ./uploads/ (bind-mounted into the containers) and served in dev by
+# the Next.js route handler at app/uploads/[...slug]/route.ts.
 
 services:
   postgres:
@@ -298,6 +298,11 @@ services:
     image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:dev}
     ports:
       - "8088:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./uploads/avatars:/var/www/avatars:ro
+      - ./uploads/forum:/var/www/forum:ro
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
@@ -308,29 +313,10 @@ services:
       SVC_HOUSEHOLD_URL: http://household:8080
       SVC_MATH_URL: http://math:8080
       SVC_GEOGRAPHY_URL: http://geography:8080
-
-  # For the e2e suite, not for day-to-day dev. A production build has no rewrites, so something
-  # has to put the pages and /api/* on one origin the way nginx does in production — this is the
-  # smallest thing that does, and it carries no route table.
-  #
-  # `next dev` needs none of this: it keeps its own :3000 and rewrites /api/* to the gateway.
-  # Profiled so `docker compose up` does not start it; run.sh names it explicitly.
-  edge:
-    image: nginx:alpine
-    profiles: ["e2e"]
-    ports:
-      - "8090:8080"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      GATEWAY_UPSTREAM: gateway:8080
-      FRONTEND_UPSTREAM: ${FRONTEND_UPSTREAM:-host.docker.internal:3000}
-    command: >
-      /bin/sh -c
-      "envsubst '$$GATEWAY_UPSTREAM $$FRONTEND_UPSTREAM' < /etc/nginx/nginx.dev.conf.template > /etc/nginx/nginx.conf
-      && exec nginx -g 'daemon off;'"
-    volumes:
-      - ./nginx.dev.conf.template:/etc/nginx/nginx.dev.conf.template:ro
+      SVC_FRONTEND_URL: ${SVC_FRONTEND_URL:-http://host.docker.internal:3000}
+      # Same mounts as production, so the static-serving path is exercised here too.
+      Uploads__Avatars: /var/www/avatars
+      Uploads__Forum: /var/www/forum
 
 volumes:
   pgdata:
