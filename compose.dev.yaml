@@ -309,13 +309,15 @@ services:
       SVC_MATH_URL: http://math:8080
       SVC_GEOGRAPHY_URL: http://geography:8080
 
-  # One origin for the frontend and the API, which is what production does and what `next dev`
-  # used to fake with its own copy of the route table. Browse the app at http://localhost:8090.
+  # For the e2e suite, not for day-to-day dev. A production build has no rewrites, so something
+  # has to put the pages and /api/* on one origin the way nginx does in production — this is the
+  # smallest thing that does, and it carries no route table.
   #
-  # FRONTEND_UPSTREAM is overridable so the e2e suite can point the same edge at its standalone
-  # build on :3100 instead of `npm run dev` on :3000.
+  # `next dev` needs none of this: it keeps its own :3000 and rewrites /api/* to the gateway.
+  # Profiled so `docker compose up` does not start it; run.sh names it explicitly.
   edge:
     image: nginx:alpine
+    profiles: ["e2e"]
     ports:
       - "8090:8080"
     extra_hosts:
