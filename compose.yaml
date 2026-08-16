@@ -1,5 +1,6 @@
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -18,12 +19,18 @@ services:
       retries: 5
 
   rabbitmq:
+    restart: unless-stopped
     image: rabbitmq:3-management
     # No host ports — accessible only inside the Docker network.
     # To inspect the management UI on the VPS: ssh -L 15672:localhost:15672 deploy@YOUR_VPS
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    # Without this /var/lib/rabbitmq lives in the container layer, so every image update or
+    # `compose down` discards durable queues and any message not yet acked. Postgres has had
+    # pgdata from the start; the broker holds state exactly the same way and needs the same.
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -39,6 +46,7 @@ services:
       - "1025:1025"
 
   identity:
+    restart: unless-stopped
     image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -71,6 +79,7 @@ services:
 
 
   forum:
+    restart: unless-stopped
     image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -98,6 +107,7 @@ services:
 
 
   finance:
+    restart: unless-stopped
     image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -125,6 +135,7 @@ services:
 
 
   household:
+    restart: unless-stopped
     image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -148,6 +159,7 @@ services:
 
 
   notifications:
+    restart: unless-stopped
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -182,6 +194,7 @@ services:
 
 
   math:
+    restart: unless-stopped
     image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -197,6 +210,7 @@ services:
 
 
   geography:
+    restart: unless-stopped
     image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -213,6 +227,7 @@ services:
 
 
   frontend:
+    restart: unless-stopped
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
     environment:
       NEXT_PUBLIC_API_URL: https://hankkarpinen.com
@@ -225,6 +240,7 @@ services:
       - household
 
   nginx:
+    restart: unless-stopped
     image: nginx:alpine
     ports:
       - "80:80"
@@ -253,6 +269,7 @@ services:
 
 volumes:
   pgdata:
+  rabbitmq_data:
   avatar_data:
   forum_media:
   certbot_webroot:

@@ -38,6 +38,8 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -77,6 +79,13 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
+      # keeps the defaults compiled into Program.cs.
+      RateLimiting__standard: "5000"
+      RateLimiting__auth: "5000"
+      RateLimiting__write: "5000"
+      RateLimiting__api: "5000"
+      RateLimiting__search: "5000"
       Email__Host: mailpit
       Email__Port: "1025"
       Email__BaseUrl: http://localhost:3000
@@ -112,6 +121,13 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
+      # keeps the defaults compiled into Program.cs.
+      RateLimiting__standard: "5000"
+      RateLimiting__auth: "5000"
+      RateLimiting__write: "5000"
+      RateLimiting__api: "5000"
+      RateLimiting__search: "5000"
       Media__RootPath: /data/forum
       Media__PublicBaseUrl: http://localhost:3000/uploads/forum
 
@@ -142,6 +158,13 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
+      # keeps the defaults compiled into Program.cs.
+      RateLimiting__standard: "5000"
+      RateLimiting__auth: "5000"
+      RateLimiting__write: "5000"
+      RateLimiting__api: "5000"
+      RateLimiting__search: "5000"
       Plaid__ClientId: ${PLAID_CLIENT_ID:-}
       Plaid__Secret: ${PLAID_SECRET:-}
       Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
@@ -174,6 +197,13 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
+      # keeps the defaults compiled into Program.cs.
+      RateLimiting__standard: "5000"
+      RateLimiting__auth: "5000"
+      RateLimiting__write: "5000"
+      RateLimiting__api: "5000"
+      RateLimiting__search: "5000"
       Email__Host: mailpit
       Email__Port: "1025"
       Email__FromAddress: noreply@hankkarpinen.com
@@ -207,6 +237,13 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
+      # keeps the defaults compiled into Program.cs.
+      RateLimiting__standard: "5000"
+      RateLimiting__auth: "5000"
+      RateLimiting__write: "5000"
+      RateLimiting__api: "5000"
+      RateLimiting__search: "5000"
 
   math:
     build:
@@ -251,3 +288,4 @@ services:
 
 volumes:
   pgdata:
+  rabbitmq_data:
