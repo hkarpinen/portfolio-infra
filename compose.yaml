@@ -66,7 +66,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:?set JWT_PRIVATE_KEY_PEM to a base64 PKCS#8 EC P-256 PEM}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
@@ -91,7 +91,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__Authority: http://identity:8080
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
@@ -113,7 +113,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__Authority: http://identity:8080
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
@@ -137,7 +137,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=household_user;Password=household_password}
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__Authority: http://identity:8080
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
@@ -157,7 +157,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__Authority: http://identity:8080
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
@@ -183,7 +183,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__Authority: http://identity:8080
 
   geography:
     restart: unless-stopped
@@ -195,7 +195,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      Jwt__Secret: ${JWT_SECRET:-changeme-at-least-32-chars-long!}
+      Jwt__Authority: http://identity:8080
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
   frontend:
