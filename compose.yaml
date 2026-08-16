@@ -198,17 +198,34 @@ services:
       Jwt__Authority: http://identity:8080
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
+  # The route table. Every /api/* request reaches a backend through here, from any client.
+  gateway:
+    restart: unless-stopped
+    image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:latest}
+    # No host ports — all traffic routed through nginx.
+    # No depends_on either: destinations resolve per request, so the gateway starts against a
+    # partial stack and a missing service is a 502 on its own routes.
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      SVC_IDENTITY_URL: http://identity:8080
+      SVC_FORUM_URL: http://forum:8080
+      SVC_FINANCE_URL: http://finance:8080
+      SVC_NOTIFICATIONS_URL: http://notifications:8080
+      SVC_HOUSEHOLD_URL: http://household:8080
+      SVC_MATH_URL: http://math:8080
+      SVC_GEOGRAPHY_URL: http://geography:8080
+
   frontend:
     restart: unless-stopped
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
     environment:
-      INTERNAL_API_URL: http://nginx:8080
+      # Server-side fetches go straight to the gateway. This used to point at an nginx server
+      # block on :8080 that carried its own copy of the route table — a fifth one.
+      INTERNAL_API_URL: http://gateway:8080
       NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
     depends_on:
-      - identity
-      - forum
-      - finance
-      - household
+      - gateway
 
   nginx:
     restart: unless-stopped
@@ -217,19 +234,14 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      - identity
-      - forum
-      - finance
-      - notifications
-      - household
-      - math
-      - geography
+      - gateway
       - frontend
     environment:
+      GATEWAY_UPSTREAM: gateway:8080
       FRONTEND_UPSTREAM: frontend:3000
     command: >
       /bin/sh -c
-      "envsubst '$$FRONTEND_UPSTREAM' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+      "envsubst '$$GATEWAY_UPSTREAM $$FRONTEND_UPSTREAM' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
       && exec nginx -g 'daemon off;'"
     volumes:
       - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro

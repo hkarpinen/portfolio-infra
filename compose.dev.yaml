@@ -288,6 +288,48 @@ services:
       Jwt__Authority: http://identity:8080
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
+  # The route table, same project and same appsettings as production.
+  # No depends_on: destinations resolve per request, so `up -d postgres rabbitmq identity finance
+  # gateway edge` works and /api/forum/* simply answers 502 until you start forum.
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:dev}
+    ports:
+      - "8088:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      SVC_IDENTITY_URL: http://identity:8080
+      SVC_FORUM_URL: http://forum:8080
+      SVC_FINANCE_URL: http://finance:8080
+      SVC_NOTIFICATIONS_URL: http://notifications:8080
+      SVC_HOUSEHOLD_URL: http://household:8080
+      SVC_MATH_URL: http://math:8080
+      SVC_GEOGRAPHY_URL: http://geography:8080
+
+  # One origin for the frontend and the API, which is what production does and what `next dev`
+  # used to fake with its own copy of the route table. Browse the app at http://localhost:8090.
+  #
+  # FRONTEND_UPSTREAM is overridable so the e2e suite can point the same edge at its standalone
+  # build on :3100 instead of `npm run dev` on :3000.
+  edge:
+    image: nginx:alpine
+    ports:
+      - "8090:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GATEWAY_UPSTREAM: gateway:8080
+      FRONTEND_UPSTREAM: ${FRONTEND_UPSTREAM:-host.docker.internal:3000}
+    command: >
+      /bin/sh -c
+      "envsubst '$$GATEWAY_UPSTREAM $$FRONTEND_UPSTREAM' < /etc/nginx/nginx.dev.conf.template > /etc/nginx/nginx.conf
+      && exec nginx -g 'daemon off;'"
+    volumes:
+      - ./nginx.dev.conf.template:/etc/nginx/nginx.dev.conf.template:ro
+
 volumes:
   pgdata:
   rabbitmq_data:

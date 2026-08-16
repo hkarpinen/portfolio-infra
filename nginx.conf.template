@@ -3,6 +3,10 @@ events {
     worker_connections 1024;
 }
 
+# The edge, and only the edge: TLS, ACME, the upload volumes, and two upstreams. It knows the
+# single prefix `/api`, not seven service names — the route table lives in gateway/, which is a
+# project rather than a config file because it is the system's public API contract and has more
+# than one client.
 http {
     include       mime.types;
     default_type  application/octet-stream;
@@ -16,72 +20,20 @@ http {
     gzip_proxied any;
     gzip_vary on;
 
-    # Rate limiting — auth endpoints are tight, everything else gets a generous allowance
+    # Per-client-IP limiting, which is the thing the services cannot do: their AddRateLimiter
+    # policies are unpartitioned, so those are global buckets. These two are per address.
     limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=10r/m;
     limit_req_zone $binary_remote_addr zone=api_limit:10m rate=200r/m;
     limit_req_status 429;
 
-    # INF-1: map SSE paths to their upstream so a single location block handles both
-    map $uri $sse_upstream {
-        ~^/api/forum/.+/events$   http://forum_upstream;
-        ~^/api/notifications/stream http://notifications_upstream;
-        default                   "";
-    }
-
-    upstream identity_upstream {
-        server identity:8080;
-        keepalive 32;
-    }
-
-    upstream forum_upstream {
-        server forum:8080;
-        keepalive 4;
-    }
-
-    upstream finance_upstream {
-        server finance:8080;
-        keepalive 32;
-    }
-
-    upstream notifications_upstream {
-        server notifications:8080;
-        keepalive 4;
-    }
-
-    upstream household_upstream {
-        server household:8080;
-        keepalive 32;
-    }
-
-    upstream math_upstream {
-        server math:8080;
-        keepalive 32;
-    }
-
-    upstream geography_upstream {
-        server geography:8080;
+    upstream gateway_upstream {
+        server ${GATEWAY_UPSTREAM};
         keepalive 32;
     }
 
     upstream frontend_upstream {
         server ${FRONTEND_UPSTREAM};
         keepalive 16;
-    }
-
-    # Internal HTTP-only server on port 8080 — frontend container server-side fetches only.
-    # Not exposed to the internet; bypasses TLS for internal Docker traffic.
-    server {
-        listen 8080;
-
-        location /api/identity      { proxy_pass http://identity_upstream;      proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/forum         { proxy_pass http://forum_upstream;         proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/finance       { proxy_pass http://finance_upstream;       proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/households    { proxy_pass http://household_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/notifications { proxy_pass http://notifications_upstream; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/math          { proxy_pass http://math_upstream;          proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-        location /api/geography     { proxy_pass http://geography_upstream;     proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header X-Forwarded-Proto https; }
-
-        location / { return 444; }
     }
 
     # HTTP → HTTPS
@@ -153,23 +105,12 @@ http {
             try_files $uri =404;
         }
 
-        location /api/identity {
-            # Tighter rate limit on auth endpoints
-            limit_req zone=auth_limit burst=5 nodelay;
-
-            proxy_pass http://identity_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # INF-1: unified SSE location for forum events + notifications stream
-        # INF-2: 90s timeouts — EventSource reconnects automatically on expiry
-        location ~ ^/api/(forum/.+/events|notifications/stream)$ {
-            proxy_pass $sse_upstream;
+        # Server-sent events. YARP streams responses without buffering, but nginx buffers by
+        # default and would hold the stream here. Exact-match, because this is the only SSE
+        # endpoint that exists — the old config also special-cased /api/forum/.+/events, which
+        # no forum controller has ever served.
+        location = /api/notifications/stream {
+            proxy_pass http://gateway_upstream;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -180,10 +121,11 @@ http {
             proxy_send_timeout 90s;
         }
 
-        location /api/forum {
-            limit_req zone=api_limit burst=20 nodelay;
+        # Tighter per-IP limit on the auth surface than on the rest of the API.
+        location /api/identity {
+            limit_req zone=auth_limit burst=5 nodelay;
 
-            proxy_pass http://forum_upstream;
+            proxy_pass http://gateway_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
             proxy_set_header Host $host;
@@ -192,10 +134,10 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/finance {
+        location /api {
             limit_req zone=api_limit burst=20 nodelay;
 
-            proxy_pass http://finance_upstream;
+            proxy_pass http://gateway_upstream;
             proxy_http_version 1.1;
             proxy_set_header Connection "";
             proxy_set_header Host $host;
@@ -204,54 +146,8 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        location /api/households {
-            limit_req zone=api_limit burst=20 nodelay;
-
-            proxy_pass http://household_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location /api/notifications {
-            limit_req zone=api_limit burst=20 nodelay;
-
-            proxy_pass http://notifications_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location /api/math {
-            limit_req zone=api_limit burst=20 nodelay;
-
-            proxy_pass http://math_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location /api/geography {
-            limit_req zone=api_limit burst=20 nodelay;
-
-            proxy_pass http://geography_upstream;
-            proxy_http_version 1.1;
-            proxy_set_header Connection "";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
+        # Everything else goes straight to Next, not through the gateway: pages, assets and the
+        # HMR socket have no business taking a hop through .NET.
         location / {
             proxy_pass http://frontend_upstream;
             proxy_set_header Host $host;
