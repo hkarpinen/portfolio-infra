@@ -1,18 +1,14 @@
-# Dev overrides. This file is not standalone — it layers on compose.yaml:
+# Dev facts, layered on compose.yaml:
 #
 #   docker compose -f compose.yaml -f compose.dev.yaml up -d
 #
-# Everything the two environments share now lives in compose.yaml exactly once. What is here is
-# only what genuinely differs: building from source instead of pulling images, publishing ports,
-# the Development environment name, rate limits loose enough for a parallel e2e run, and the
-# handful of URLs that point at localhost.
+# Only additions — the base declares nothing about ports, TLS or host paths, so nothing here has
+# to undo anything. The flow is the same one production runs: client -> gateway -> service.
 #
 # The frontend is NOT containerised in dev — run it locally:
 #   cd ../frontend && npm run dev
 #
-# next.config.mjs rewrites /api/* to the gateway on :8088; the gateway holds the only route table.
-# Upload files are written to ./uploads/ and served in dev by the Next.js route handler at
-# app/uploads/[...slug]/route.ts.
+# next.config.mjs rewrites /api/* to the gateway on :8088.
 
 # A parallel e2e run drives far more traffic per minute than any real user, and the production
 # posture would reject it — which surfaces as the frontend's error boundary rather than as
@@ -29,6 +25,9 @@ x-dev-mail: &dev-mail
   Email__Port: "1025"
   Email__BaseUrl: http://localhost:3000
 
+x-dev: &dev
+  ASPNETCORE_ENVIRONMENT: Development
+
 services:
   postgres:
     ports:
@@ -39,7 +38,7 @@ services:
       - "5672:5672"
       - "15672:15672"
 
-  # Dev only — production sends through a real SMTP relay via EMAIL_* env vars.
+  # Dev only — production sends through a real SMTP relay.
   mailpit:
     image: axllent/mailpit:latest
     ports:
@@ -55,15 +54,13 @@ services:
     volumes:
       - ./uploads/avatars:/data/avatars
     environment:
-      <<: [*dev-ratelimits, *dev-mail]
-      ASPNETCORE_ENVIRONMENT: Development
-      # Throwaway dev key, committed on purpose so `compose up` needs no setup. Production has no
-      # default: compose refuses to start without JWT_PRIVATE_KEY_PEM.
+      <<: [*dev, *dev-ratelimits, *dev-mail]
+      # Throwaway key, committed on purpose so `compose up` needs no setup. Production has no
+      # default: identity refuses to start and prints the openssl line that generates one.
       Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:-LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ2tKbW5Ea2ptbFRoVjRIYlEKZnBlaGljYW9MS2J3YWN5OVBPNXBaV2I2ZFZPaFJBTkNBQVRkdU01ZVhxOWxqWFpPYUR6dWNIL0RCL0pqY1piNQpJWmxMZ1l3QmxkdEs0d0JzOXEySXBXc2xweE4xeU1zQ25wdXFjS29QcTA2U3c2TEdxbVpOSzVxbwotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==}
       Storage__PublicBaseUrl: http://localhost:3000/uploads/avatars
-      # Blank on purpose: an empty secret is what makes RecaptchaService skip verification. The
-      # base inherits a real key from .env, and with it every demo/start and register in dev fails
-      # CAPTCHA against Google with a dummy token.
+      # Empty is what makes RecaptchaService skip verification. With a real key, every demo/start
+      # and register in dev fails CAPTCHA against Google with a dummy token.
       Recaptcha__SecretKey: ""
 
   forum:
@@ -75,8 +72,7 @@ services:
     volumes:
       - ./uploads/forum:/data/forum
     environment:
-      <<: *dev-ratelimits
-      ASPNETCORE_ENVIRONMENT: Development
+      <<: [*dev, *dev-ratelimits]
       Media__PublicBaseUrl: http://localhost:3000/uploads/forum
 
   finance:
@@ -86,8 +82,7 @@ services:
     ports:
       - "8083:8080"
     environment:
-      <<: *dev-ratelimits
-      ASPNETCORE_ENVIRONMENT: Development
+      <<: [*dev, *dev-ratelimits]
 
   household:
     build:
@@ -96,8 +91,7 @@ services:
     ports:
       - "8085:8080"
     environment:
-      <<: *dev-ratelimits
-      ASPNETCORE_ENVIRONMENT: Development
+      <<: [*dev, *dev-ratelimits]
 
   notifications:
     build:
@@ -106,12 +100,10 @@ services:
     ports:
       - "8084:8080"
     environment:
-      <<: [*dev-ratelimits, *dev-mail]
-      ASPNETCORE_ENVIRONMENT: Development
+      <<: [*dev, *dev-ratelimits, *dev-mail]
       Email__FromAddress: noreply@hankkarpinen.com
       Email__FromName: hankkarpinen.com
-      # mailpit takes no credentials; inheriting the relay's from .env makes every dev mail fail
-      # authentication.
+      # mailpit takes no credentials.
       Email__Username: ""
       Email__Password: ""
 
@@ -122,7 +114,7 @@ services:
     ports:
       - "8086:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      <<: *dev
 
   geography:
     build:
@@ -131,40 +123,30 @@ services:
     ports:
       - "8087:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      <<: *dev
+      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
   gateway:
     build:
       context: ../gateway
       dockerfile: Dockerfile
     image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:dev}
-    # Plain HTTP on one port. No TLS, no ACME and no canonical-host redirect — those are the parts
-    # of the edge that need a real domain, and they stay in compose.yaml.
-    #
-    # !override because compose MERGES port lists: without it this inherits the base's 80 and 443
-    # and tries to bind them on the host alongside 8088.
-    ports: !override
+    ports:
       - "8088:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # !override for the same reason as ports: otherwise the base's /etc/letsencrypt and
-    # certbot_webroot mounts come through, and neither exists on a dev machine.
-    volumes: !override
+    volumes:
       - ./uploads/avatars:/var/www/avatars:ro
       - ./uploads/forum:/var/www/forum:ro
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      # No TLS paths, so nothing binds 443. HttpPort doubles as the internal port, which makes
-      # every request "internal" and skips the redirect — CanonicalHost is blank here anyway.
+      <<: *dev
+      # No Tls paths, so nothing binds 443. No CanonicalHost, so nothing redirects.
       Gateway__HttpPort: "8080"
-      Gateway__InternalPort: "8080"
-      Tls__CertPath: ""
-      Tls__KeyPath: ""
-      CanonicalHost: ""
-      # The e2e suite overrides this to point at its standalone build on :3100.
+      Uploads__Avatars: /var/www/avatars
+      Uploads__Forum: /var/www/forum
+      # The e2e suite points this at its standalone build on :3100.
       SVC_FRONTEND_URL: ${SVC_FRONTEND_URL:-http://host.docker.internal:3000}
 
-  # Profiled off: `npm run dev` serves the frontend in dev. Start the container with
-  # `--profile containerised-frontend` to exercise the production image locally.
+  # Profiled off: `npm run dev` serves the frontend in dev.
   frontend:
     profiles: ["containerised-frontend"]

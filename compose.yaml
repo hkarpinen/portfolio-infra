@@ -1,5 +1,6 @@
-# Shared blocks. Declared once so a value cannot drift between services — the JWT settings were
-# duplicated seven ways before, which is exactly how a mismatch hides.
+# The stack, and the flow every environment runs: client -> gateway -> service.
+# Ports, TLS and host paths are environment facts and live in compose.dev.yaml / compose.prod.yaml,
+# which only ever add.
 x-rabbit: &rabbit
   RabbitMq__Host: rabbitmq
   RabbitMq__Username: ${RABBITMQ_USER:-guest}
@@ -10,7 +11,6 @@ x-jwt-consumer: &jwt-consumer
   Jwt__Authority: http://identity:8080
 
 x-aspnet: &aspnet
-  ASPNETCORE_ENVIRONMENT: Production
   ASPNETCORE_URLS: http://+:8080
 
 x-healthcheck: &healthcheck
@@ -66,7 +66,6 @@ services:
   identity:
     <<: *backend
     image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,18 +76,14 @@ services:
     environment:
       <<: [*aspnet, *rabbit]
       ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
-      # No default on purpose. Left unset, identity refuses to start and prints the openssl line
-      # that generates one — compose cannot use `:?` here, because it interpolates this file even
-      # when compose.dev.yaml overrides the value, which would break every dev run.
+      # No default. Left unset, identity refuses to start and prints the openssl line that
+      # generates one.
       Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:-}
       Storage__LocalPath: /data/avatars
-      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
-      Recaptcha__SecretKey: ${RECAPTCHA_SECRET_KEY:-}
 
   forum:
     <<: *backend
     image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,12 +97,10 @@ services:
       <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
       Media__RootPath: /data/forum
-      Media__PublicBaseUrl: ${MEDIA_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/forum}
 
   finance:
     <<: *backend
     image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,15 +111,10 @@ services:
     environment:
       <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
-      Plaid__ClientId: ${PLAID_CLIENT_ID:-}
-      Plaid__Secret: ${PLAID_SECRET:-}
-      Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
-      Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
 
   household:
     <<: *backend
     image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,7 +129,6 @@ services:
   notifications:
     <<: *backend
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,21 +140,9 @@ services:
       <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
 
-      # This is the only service that sends mail. Without these it falls back to
-      # appsettings.json — localhost:1025, which nothing listens on inside the
-      # container — so every confirmation and reset mail dead-letters.
-      Email__Host: ${EMAIL_HOST:-localhost}
-      Email__Port: ${EMAIL_PORT:-25}
-      Email__Username: ${EMAIL_USERNAME:-}
-      Email__Password: ${EMAIL_PASSWORD:-}
-      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@hankkarpinen.com}
-      Email__FromName: ${EMAIL_FROM_NAME:-hankkarpinen.com}
-      Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
-
   math:
     <<: *backend
     image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       identity:
         condition: service_healthy
@@ -177,58 +152,18 @@ services:
   geography:
     <<: *backend
     image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
-    # No host ports — all traffic routed through nginx.
     depends_on:
       identity:
         condition: service_healthy
     environment:
       <<: [*aspnet, *jwt-consumer]
-      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
-  # The edge, and the route table. This replaced nginx outright: TLS, the ACME challenge, the
-  # redirects, the security headers, the upload volumes and per-IP rate limiting are all here now.
-  #
-  # certbot still renews on a host cron and writes to certbot_webroot / /etc/letsencrypt. Its
-  # deploy hook restarts this container instead of reloading nginx.
-  #
-  # No depends_on: destinations resolve per request, so it starts against a partial stack and a
-  # service that is down is a 502 on its own routes.
+  # The route table.
+  # The route table.
   gateway:
     restart: unless-stopped
     image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:latest}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - avatar_data:/var/www/avatars:ro
-      - forum_media:/var/www/forum:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - certbot_webroot:/var/www/certbot
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      # One key rather than Kestrel__Endpoints__*, so the dev override can replace it outright.
-      # Compose merges environment maps and cannot delete a key the base set — and an endpoint
-      # left with an empty Url makes Kestrel refuse to start rather than ignoring it.
-      #
-      # :8080 is in-cluster only and never published. Server-side fetches from the frontend land
-      # there and skip the HTTPS redirect, which would otherwise send them out to the public
-      # origin and back.
-      # Binding is configured in code, not via ASPNETCORE_URLS or Kestrel__Endpoints__*: compose
-      # merges environment maps and cannot delete a key the base set, so a dev run would inherit
-      # the HTTPS endpoint and its certificate path — which Kestrel loads eagerly, failing to
-      # start over a file that only exists here.
-      #
-      # HttpPort is the public cleartext port, serving the ACME challenge and redirecting the
-      # rest. InternalPort is never published; the frontend's server-side fetches land there and
-      # skip the redirect. Setting Tls paths is what binds 443.
-      Gateway__HttpPort: "80"
-      Gateway__InternalPort: "8080"
-      Tls__CertPath: /etc/letsencrypt/live/hankkarpinen.com/fullchain.pem
-      Tls__KeyPath: /etc/letsencrypt/live/hankkarpinen.com/privkey.pem
-      CanonicalHost: ${CANONICAL_HOST:-hankkarpinen.com}
-      Acme__WebRoot: /var/www/certbot
-      Uploads__Avatars: /var/www/avatars
-      Uploads__Forum: /var/www/forum
       SVC_IDENTITY_URL: http://identity:8080
       SVC_FORUM_URL: http://forum:8080
       SVC_FINANCE_URL: http://finance:8080
@@ -236,15 +171,11 @@ services:
       SVC_HOUSEHOLD_URL: http://household:8080
       SVC_MATH_URL: http://math:8080
       SVC_GEOGRAPHY_URL: http://geography:8080
-      SVC_FRONTEND_URL: http://frontend:3000
 
   frontend:
     restart: unless-stopped
     image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
-    # No host ports — all traffic routed through the gateway.
     environment:
-      # Server-side fetches go straight to the gateway. This used to point at an nginx server
-      # block on :8080 that carried its own copy of the route table — a fifth one.
       INTERNAL_API_URL: http://gateway:8080
       NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
 

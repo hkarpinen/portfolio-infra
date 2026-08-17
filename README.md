@@ -25,9 +25,11 @@ Docker Compose stack for the portfolio. Pulls pre-built images from `ghcr.io` an
 
 ```bash
 cp .env.example .env
-# Edit .env — change POSTGRES_PASSWORD and JWT_SECRET at minimum
-docker compose pull
-docker compose up -d
+# Edit .env — POSTGRES_PASSWORD and JWT_PRIVATE_KEY_PEM at minimum.
+# Generate the signing key with:
+#   openssl ecparam -genkey -name prime256v1 -noout | openssl pkcs8 -topk8 -nocrypt | base64
+docker compose -f compose.yaml -f compose.prod.yaml pull
+docker compose -f compose.yaml -f compose.prod.yaml up -d
 ```
 
 ### Local development
@@ -65,7 +67,8 @@ FRONTEND_IMAGE=ghcr.io/hkarpinen/portfolio-frontend:abc1234
 
 | File | Description |
 |---|---|
-| `compose.yaml` | The full stack, production-shaped. Everything both environments share lives here once |
-| `compose.dev.yaml` | Dev **overrides**, layered on `compose.yaml` — not standalone. Builds from source, publishes ports, loosens rate limits |
+| `compose.yaml` | The stack and the flow. Nothing environment-specific |
+| `compose.dev.yaml` | Dev facts, layered on the base: builds from source, publishes ports, loosens rate limits, no TLS |
+| `compose.prod.yaml` | Production facts: 80/443, the certificate paths, the upload volumes, the real secrets |
 | `init-databases.sql` | Creates `identity_db`, `forum_db`, `finance_db` on first boot |
 | `.env.example` | Template for required secrets |
