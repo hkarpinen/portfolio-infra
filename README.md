@@ -6,11 +6,15 @@ Docker Compose stack for the portfolio. Pulls pre-built images from `ghcr.io` an
 
 | Service | Image | Port |
 |---|---|---|
-| `identity` | `ghcr.io/hkarpinen/portfolio-identity` | 8081 |
-| `forum` | `ghcr.io/hkarpinen/portfolio-forum` | 8082 |
-| `finance` | `ghcr.io/hkarpinen/portfolio-finance` | 8083 |
-| `frontend` | `ghcr.io/hkarpinen/portfolio-frontend` | 3000 |
-| `nginx` | `nginx:alpine` | 80 (reverse proxy) |
+| `gateway` | `ghcr.io/hkarpinen/portfolio-gateway` | 80, 443 in prod; 8088 in dev — the edge and the route table |
+| `identity` | `ghcr.io/hkarpinen/portfolio-identity` | 8081 (dev only) |
+| `forum` | `ghcr.io/hkarpinen/portfolio-forum` | 8082 (dev only) |
+| `finance` | `ghcr.io/hkarpinen/portfolio-finance` | 8083 (dev only) |
+| `notifications` | `ghcr.io/hkarpinen/portfolio-notifications` | 8084 (dev only) |
+| `household` | `ghcr.io/hkarpinen/portfolio-household` | 8085 (dev only) |
+| `math` | `ghcr.io/hkarpinen/portfolio-math` | 8086 (dev only) |
+| `geography` | `ghcr.io/hkarpinen/portfolio-geography` | 8087 (dev only) |
+| `frontend` | `ghcr.io/hkarpinen/portfolio-frontend` | 3000 (prod only — run `npm run dev` locally instead) |
 | `postgres` | `postgres:17` | (internal) |
 | `rabbitmq` | `rabbitmq:3-management` | 5672, 15672 |
 | `mailpit` | `axllent/mailpit` | 8025 (web UI), 1025 (SMTP) |
@@ -31,8 +35,8 @@ docker compose up -d
 Run the backends in Docker, the frontend locally with hot reload:
 
 ```bash
-# Terminal 1 — infrastructure + backends only (no nginx, no frontend container)
-docker compose -f compose.dev.yaml up -d
+# Terminal 1 — infrastructure, backends and the gateway (no frontend container)
+docker compose -f compose.yaml -f compose.dev.yaml up -d
 
 # Terminal 2 — Next.js dev server with hot reload
 cd ../frontend
@@ -40,9 +44,9 @@ npm install
 npm run dev
 ```
 
-`next.config.mjs` rewrites `/api/*` directly to the backend ports (8081/8082/8083), so there's no nginx in the dev path and no URL configuration needed.
+`next.config.mjs` rewrites `/api/*` to the gateway on :8088 — one line, one destination. The gateway holds the only route table, in `gateway/src/Gateway/appsettings.json`.
 
-App available at [http://localhost](http://localhost).  
+App available at [http://localhost:3000](http://localhost:3000) in dev.  
 RabbitMQ management UI at [http://localhost:15672](http://localhost:15672).  
 Mailpit (dev email) at [http://localhost:8025](http://localhost:8025).
 
@@ -61,8 +65,7 @@ FRONTEND_IMAGE=ghcr.io/hkarpinen/portfolio-frontend:abc1234
 
 | File | Description |
 |---|---|
-| `compose.yaml` | Production stack — pulls published images, nginx routes everything |
-| `compose.dev.yaml` | Dev stack — backends only, no nginx, no frontend |
-| `nginx.conf` | Reverse proxy config (production only) |
+| `compose.yaml` | The full stack, production-shaped. Everything both environments share lives here once |
+| `compose.dev.yaml` | Dev **overrides**, layered on `compose.yaml` — not standalone. Builds from source, publishes ports, loosens rate limits |
 | `init-databases.sql` | Creates `identity_db`, `forum_db`, `finance_db` on first boot |
 | `.env.example` | Template for required secrets |

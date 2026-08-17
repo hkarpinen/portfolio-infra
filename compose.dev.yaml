@@ -1,51 +1,45 @@
-# Standalone dev stack — run with:
-#   docker compose -f compose.dev.yaml up -d
+# Dev overrides. This file is not standalone — it layers on compose.yaml:
 #
-# Runs infrastructure, the backends and the gateway. The frontend is NOT containerised in dev —
-# run it locally:
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d
+#
+# Everything the two environments share now lives in compose.yaml exactly once. What is here is
+# only what genuinely differs: building from source instead of pulling images, publishing ports,
+# the Development environment name, rate limits loose enough for a parallel e2e run, and the
+# handful of URLs that point at localhost.
+#
+# The frontend is NOT containerised in dev — run it locally:
 #   cd ../frontend && npm run dev
 #
 # next.config.mjs rewrites /api/* to the gateway on :8088; the gateway holds the only route table.
-# Upload files are written to ./uploads/ (bind-mounted into the containers) and served in dev by
-# the Next.js route handler at app/uploads/[...slug]/route.ts.
+# Upload files are written to ./uploads/ and served in dev by the Next.js route handler at
+# app/uploads/[...slug]/route.ts.
+
+# A parallel e2e run drives far more traffic per minute than any real user, and the production
+# posture would reject it — which surfaces as the frontend's error boundary rather than as
+# anything resembling a rate-limit message.
+x-dev-ratelimits: &dev-ratelimits
+  RateLimiting__standard: "5000"
+  RateLimiting__auth: "5000"
+  RateLimiting__write: "5000"
+  RateLimiting__api: "5000"
+  RateLimiting__search: "5000"
+
+x-dev-mail: &dev-mail
+  Email__Host: mailpit
+  Email__Port: "1025"
+  Email__BaseUrl: http://localhost:3000
 
 services:
   postgres:
-    image: postgres:17
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_password}
-      FORUM_DB_PASSWORD: ${FORUM_DB_PASSWORD:-forum_password}
-      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance_password}
-      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications_password}
-      HOUSEHOLD_DB_PASSWORD: ${HOUSEHOLD_DB_PASSWORD:-household_password}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   rabbitmq:
-    image: rabbitmq:3-management
     ports:
       - "5672:5672"
       - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
+  # Dev only — production sends through a real SMTP relay via EMAIL_* env vars.
   mailpit:
     image: axllent/mailpit:latest
     ports:
@@ -58,41 +52,19 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8081:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     volumes:
       - ./uploads/avatars:/data/avatars
     environment:
+      <<: [*dev-ratelimits, *dev-mail]
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
-      # Throwaway dev key, committed on purpose so `compose up` needs no setup.
-      # Production has no default: compose refuses to start without JWT_PRIVATE_KEY_PEM.
+      # Throwaway dev key, committed on purpose so `compose up` needs no setup. Production has no
+      # default: compose refuses to start without JWT_PRIVATE_KEY_PEM.
       Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:-LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ2tKbW5Ea2ptbFRoVjRIYlEKZnBlaGljYW9MS2J3YWN5OVBPNXBaV2I2ZFZPaFJBTkNBQVRkdU01ZVhxOWxqWFpPYUR6dWNIL0RCL0pqY1piNQpJWmxMZ1l3QmxkdEs0d0JzOXEySXBXc2xweE4xeU1zQ25wdXFjS29QcTA2U3c2TEdxbVpOSzVxbwotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==}
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
-      # keeps the defaults compiled into Program.cs.
-      RateLimiting__standard: "5000"
-      RateLimiting__auth: "5000"
-      RateLimiting__write: "5000"
-      RateLimiting__api: "5000"
-      RateLimiting__search: "5000"
-      Email__Host: mailpit
-      Email__Port: "1025"
-      Email__BaseUrl: http://localhost:3000
-      Storage__LocalPath: /data/avatars
       Storage__PublicBaseUrl: http://localhost:3000/uploads/avatars
+      # Blank on purpose: an empty secret is what makes RecaptchaService skip verification. The
+      # base inherits a real key from .env, and with it every demo/start and register in dev fails
+      # CAPTCHA against Google with a dummy token.
+      Recaptcha__SecretKey: ""
 
   forum:
     build:
@@ -100,37 +72,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8082:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      identity:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     volumes:
       - ./uploads/forum:/data/forum
     environment:
+      <<: *dev-ratelimits
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
-      # keeps the defaults compiled into Program.cs.
-      RateLimiting__standard: "5000"
-      RateLimiting__auth: "5000"
-      RateLimiting__write: "5000"
-      RateLimiting__api: "5000"
-      RateLimiting__search: "5000"
-      Media__RootPath: /data/forum
       Media__PublicBaseUrl: http://localhost:3000/uploads/forum
 
   finance:
@@ -139,78 +85,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8083:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      identity:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     environment:
+      <<: *dev-ratelimits
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
-      # keeps the defaults compiled into Program.cs.
-      RateLimiting__standard: "5000"
-      RateLimiting__auth: "5000"
-      RateLimiting__write: "5000"
-      RateLimiting__api: "5000"
-      RateLimiting__search: "5000"
-      Plaid__ClientId: ${PLAID_CLIENT_ID:-}
-      Plaid__Secret: ${PLAID_SECRET:-}
-      Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
-      Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
-
-  notifications:
-    build:
-      context: ../notifications
-      dockerfile: Dockerfile
-    ports:
-      - "8084:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      identity:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
-      # keeps the defaults compiled into Program.cs.
-      RateLimiting__standard: "5000"
-      RateLimiting__auth: "5000"
-      RateLimiting__write: "5000"
-      RateLimiting__api: "5000"
-      RateLimiting__search: "5000"
-      Email__Host: mailpit
-      Email__Port: "1025"
-      Email__FromAddress: noreply@hankkarpinen.com
-      Email__FromName: hankkarpinen.com
-      Email__BaseUrl: http://localhost:3000
 
   household:
     build:
@@ -218,34 +95,25 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8085:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      identity:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     environment:
+      <<: *dev-ratelimits
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=household_user;Password=household_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
-      # Dev only. A parallel e2e run drives more traffic per minute than any real user; production
-      # keeps the defaults compiled into Program.cs.
-      RateLimiting__standard: "5000"
-      RateLimiting__auth: "5000"
-      RateLimiting__write: "5000"
-      RateLimiting__api: "5000"
-      RateLimiting__search: "5000"
+
+  notifications:
+    build:
+      context: ../notifications
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    environment:
+      <<: [*dev-ratelimits, *dev-mail]
+      ASPNETCORE_ENVIRONMENT: Development
+      Email__FromAddress: noreply@hankkarpinen.com
+      Email__FromName: hankkarpinen.com
+      # mailpit takes no credentials; inheriting the relay's from .env makes every dev mail fail
+      # authentication.
+      Email__Username: ""
+      Email__Password: ""
 
   math:
     build:
@@ -253,19 +121,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8086:8080"
-    depends_on:
-      identity:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      Jwt__Authority: http://identity:8080
 
   geography:
     build:
@@ -273,51 +130,41 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8087:8080"
-    depends_on:
-      identity:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      Jwt__Authority: http://identity:8080
-      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
-  # The route table, same project and same appsettings as production.
-  # No depends_on: destinations resolve per request, so `up -d postgres rabbitmq identity finance
-  # gateway edge` works and /api/forum/* simply answers 502 until you start forum.
   gateway:
     build:
       context: ../gateway
       dockerfile: Dockerfile
     image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:dev}
-    ports:
+    # Plain HTTP on one port. No TLS, no ACME and no canonical-host redirect — those are the parts
+    # of the edge that need a real domain, and they stay in compose.yaml.
+    #
+    # !override because compose MERGES port lists: without it this inherits the base's 80 and 443
+    # and tries to bind them on the host alongside 8088.
+    ports: !override
       - "8088:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
+    # !override for the same reason as ports: otherwise the base's /etc/letsencrypt and
+    # certbot_webroot mounts come through, and neither exists on a dev machine.
+    volumes: !override
       - ./uploads/avatars:/var/www/avatars:ro
       - ./uploads/forum:/var/www/forum:ro
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
-      SVC_IDENTITY_URL: http://identity:8080
-      SVC_FORUM_URL: http://forum:8080
-      SVC_FINANCE_URL: http://finance:8080
-      SVC_NOTIFICATIONS_URL: http://notifications:8080
-      SVC_HOUSEHOLD_URL: http://household:8080
-      SVC_MATH_URL: http://math:8080
-      SVC_GEOGRAPHY_URL: http://geography:8080
+      # No TLS paths, so nothing binds 443. HttpPort doubles as the internal port, which makes
+      # every request "internal" and skips the redirect — CanonicalHost is blank here anyway.
+      Gateway__HttpPort: "8080"
+      Gateway__InternalPort: "8080"
+      Tls__CertPath: ""
+      Tls__KeyPath: ""
+      CanonicalHost: ""
+      # The e2e suite overrides this to point at its standalone build on :3100.
       SVC_FRONTEND_URL: ${SVC_FRONTEND_URL:-http://host.docker.internal:3000}
-      # Same mounts as production, so the static-serving path is exercised here too.
-      Uploads__Avatars: /var/www/avatars
-      Uploads__Forum: /var/www/forum
 
-volumes:
-  pgdata:
-  rabbitmq_data:
+  # Profiled off: `npm run dev` serves the frontend in dev. Start the container with
+  # `--profile containerised-frontend` to exercise the production image locally.
+  frontend:
+    profiles: ["containerised-frontend"]

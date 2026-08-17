@@ -1,3 +1,29 @@
+# Shared blocks. Declared once so a value cannot drift between services — the JWT settings were
+# duplicated seven ways before, which is exactly how a mismatch hides.
+x-rabbit: &rabbit
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Username: ${RABBITMQ_USER:-guest}
+  RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+
+x-jwt-consumer: &jwt-consumer
+  # A URL, not a secret. Only identity holds key material.
+  Jwt__Authority: http://identity:8080
+
+x-aspnet: &aspnet
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_URLS: http://+:8080
+
+x-healthcheck: &healthcheck
+  test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+  interval: 10s
+  timeout: 5s
+  retries: 15
+  start_period: 30s
+
+x-backend: &backend
+  restart: unless-stopped
+  healthcheck: *healthcheck
+
 services:
   postgres:
     restart: unless-stopped
@@ -37,16 +63,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # Mail trap — dev only. Production uses a real SMTP relay via EMAIL_* env vars.
-  mailpit:
-    image: axllent/mailpit:latest
-    profiles: ["dev"]
-    ports:
-      - "8025:8025"
-      - "1025:1025"
-
   identity:
-    restart: unless-stopped
+    <<: *backend
     image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -54,28 +72,21 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 30s
     volumes:
       - avatar_data:/data/avatars
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
+      <<: [*aspnet, *rabbit]
       ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
-      Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:?set JWT_PRIVATE_KEY_PEM to a base64 PKCS#8 EC P-256 PEM}
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      # No default on purpose. Left unset, identity refuses to start and prints the openssl line
+      # that generates one — compose cannot use `:?` here, because it interpolates this file even
+      # when compose.dev.yaml overrides the value, which would break every dev run.
+      Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:-}
       Storage__LocalPath: /data/avatars
       Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
       Recaptcha__SecretKey: ${RECAPTCHA_SECRET_KEY:-}
 
   forum:
-    restart: unless-stopped
+    <<: *backend
     image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -88,18 +99,13 @@ services:
     volumes:
       - forum_media:/data/forum
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
+      <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
       Media__RootPath: /data/forum
       Media__PublicBaseUrl: ${MEDIA_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/forum}
 
   finance:
-    restart: unless-stopped
+    <<: *backend
     image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -110,20 +116,15 @@ services:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
+      <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
       Plaid__ClientId: ${PLAID_CLIENT_ID:-}
       Plaid__Secret: ${PLAID_SECRET:-}
       Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
       Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
 
   household:
-    restart: unless-stopped
+    <<: *backend
     image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -134,16 +135,11 @@ services:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
+      <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=household_user;Password=household_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
   notifications:
-    restart: unless-stopped
+    <<: *backend
     image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
@@ -154,13 +150,8 @@ services:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
+      <<: [*aspnet, *rabbit, *jwt-consumer]
       ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
-      Jwt__Authority: http://identity:8080
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Username: ${RABBITMQ_USER:-guest}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
       # This is the only service that sends mail. Without these it falls back to
       # appsettings.json — localhost:1025, which nothing listens on inside the
@@ -174,31 +165,26 @@ services:
       Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
 
   math:
-    restart: unless-stopped
+    <<: *backend
     image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
-      Jwt__Authority: http://identity:8080
+      <<: [*aspnet, *jwt-consumer]
 
   geography:
-    restart: unless-stopped
+    <<: *backend
     image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
     # No host ports — all traffic routed through nginx.
     depends_on:
       identity:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:8080
-      Jwt__Authority: http://identity:8080
+      <<: [*aspnet, *jwt-consumer]
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
-  # The route table. Every /api/* request reaches a backend through here, from any client.
   # The edge, and the route table. This replaced nginx outright: TLS, the ACME challenge, the
   # redirects, the security headers, the upload volumes and per-IP rate limiting are all here now.
   #
@@ -220,14 +206,25 @@ services:
       - certbot_webroot:/var/www/certbot
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      Kestrel__Endpoints__Http__Url: http://+:80
-      Kestrel__Endpoints__Https__Url: https://+:443
-      # In-cluster only, not published. Server-side fetches from the frontend land here and skip
-      # the HTTPS redirect, which would otherwise send them out to the public origin and back.
-      Kestrel__Endpoints__Internal__Url: http://+:8080
-      InternalPort: "8080"
-      Kestrel__Endpoints__Https__Certificate__Path: /etc/letsencrypt/live/hankkarpinen.com/fullchain.pem
-      Kestrel__Endpoints__Https__Certificate__KeyPath: /etc/letsencrypt/live/hankkarpinen.com/privkey.pem
+      # One key rather than Kestrel__Endpoints__*, so the dev override can replace it outright.
+      # Compose merges environment maps and cannot delete a key the base set — and an endpoint
+      # left with an empty Url makes Kestrel refuse to start rather than ignoring it.
+      #
+      # :8080 is in-cluster only and never published. Server-side fetches from the frontend land
+      # there and skip the HTTPS redirect, which would otherwise send them out to the public
+      # origin and back.
+      # Binding is configured in code, not via ASPNETCORE_URLS or Kestrel__Endpoints__*: compose
+      # merges environment maps and cannot delete a key the base set, so a dev run would inherit
+      # the HTTPS endpoint and its certificate path — which Kestrel loads eagerly, failing to
+      # start over a file that only exists here.
+      #
+      # HttpPort is the public cleartext port, serving the ACME challenge and redirecting the
+      # rest. InternalPort is never published; the frontend's server-side fetches land there and
+      # skip the redirect. Setting Tls paths is what binds 443.
+      Gateway__HttpPort: "80"
+      Gateway__InternalPort: "8080"
+      Tls__CertPath: /etc/letsencrypt/live/hankkarpinen.com/fullchain.pem
+      Tls__KeyPath: /etc/letsencrypt/live/hankkarpinen.com/privkey.pem
       CanonicalHost: ${CANONICAL_HOST:-hankkarpinen.com}
       Acme__WebRoot: /var/www/certbot
       Uploads__Avatars: /var/www/avatars
