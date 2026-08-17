@@ -126,6 +126,17 @@ services:
       <<: *dev
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
+  media:
+    build:
+      context: ../media
+      dockerfile: Dockerfile
+    ports:
+      - "8089:8080"
+    volumes:
+      - ./uploads/media:/data/media
+    environment:
+      <<: [*dev, *dev-ratelimits]
+
   gateway:
     build:
       context: ../gateway
@@ -144,6 +155,7 @@ services:
       Gateway__HttpPort: "8080"
       Uploads__Avatars: /var/www/avatars
       Uploads__Forum: /var/www/forum
+      SVC_MEDIA_URL: http://media:8080
       # The e2e suite points this at its standalone build on :3100.
       SVC_FRONTEND_URL: ${SVC_FRONTEND_URL:-http://host.docker.internal:3000}
 

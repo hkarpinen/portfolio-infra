@@ -52,6 +52,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
 
+  media:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+
   # The public edge. certbot renews on a host cron and writes to these paths; its deploy hook
   # restarts this container.
   gateway:
