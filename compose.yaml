@@ -209,6 +209,10 @@ services:
   gateway:
     restart: unless-stopped
     image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:latest}
+    # Root, for two reasons: Let's Encrypt private keys are root-owned mode 600, and binding
+    # ports below 1024 needs the capability. nginx ran its master process as root for the same
+    # reasons; this keeps the key at 600 rather than widening it on the host.
+    user: root
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # HttpPort serves the ACME challenge and redirects the rest. InternalPort is never
