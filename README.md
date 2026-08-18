@@ -28,8 +28,8 @@ cp .env.example .env
 # Edit .env — POSTGRES_PASSWORD and JWT_PRIVATE_KEY_PEM at minimum.
 # Generate the signing key with:
 #   openssl ecparam -genkey -name prime256v1 -noout | openssl pkcs8 -topk8 -nocrypt | base64
-docker compose -f compose.yaml -f compose.prod.yaml pull
-docker compose -f compose.yaml -f compose.prod.yaml up -d
+docker compose pull
+docker compose up -d
 ```
 
 ### Local development
@@ -67,8 +67,7 @@ FRONTEND_IMAGE=ghcr.io/hkarpinen/portfolio-frontend:abc1234
 
 | File | Description |
 |---|---|
-| `compose.yaml` | The stack and the flow. Nothing environment-specific |
-| `compose.dev.yaml` | Dev facts, layered on the base: builds from source, publishes ports, loosens rate limits, no TLS |
-| `compose.prod.yaml` | Production facts: 80/443, the certificate paths, the upload volumes, the real secrets |
+| `compose.yaml` | The production stack |
+| `compose.dev.yaml` | The dev stack — builds from source, publishes ports, loosens rate limits, no TLS |
 | `init-databases.sql` | Creates `identity_db`, `forum_db`, `finance_db` on first boot |
 | `.env.example` | Template for required secrets |

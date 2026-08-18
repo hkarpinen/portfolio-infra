@@ -124,13 +124,13 @@ Run appleboy/ssh-action@v1.0.3
 /usr/bin/docker run --name b1c2d0f3e093feec4adb91abbca76f725622_999dfb --label 33b1c2 --workdir /github/workspace --rm -e "INPUT_HOST" -e "INPUT_USERNAME" -e "INPUT_KEY" -e "INPUT_SCRIPT" -e "INPUT_PORT" -e "INPUT_PASSPHRASE" -e "INPUT_PASSWORD" -e "INPUT_SYNC" -e "INPUT_USE_INSECURE_CIPHER" -e "INPUT_CIPHER" -e "INPUT_TIMEOUT" -e "INPUT_COMMAND_TIMEOUT" -e "INPUT_KEY_PATH" -e "INPUT_FINGERPRINT" -e "INPUT_PROXY_HOST" -e "INPUT_PROXY_PORT" -e "INPUT_PROXY_USERNAME" -e "INPUT_PROXY_PASSWORD" -e "INPUT_PROXY_PASSPHRASE" -e "INPUT_PROXY_TIMEOUT" -e "INPUT_PROXY_KEY" -e "INPUT_PROXY_KEY_PATH" -e "INPUT_PROXY_FINGERPRINT" -e "INPUT_PROXY_CIPHER" -e "INPUT_PROXY_USE_INSECURE_CIPHER" -e "INPUT_SCRIPT_STOP" -e "INPUT_ENVS" -e "INPUT_ENVS_FORMAT" -e "INPUT_DEBUG" -e "INPUT_ALLENVS" -e "INPUT_REQUEST_PTY" -e "HOME" -e "GITHUB_JOB" -e "GITHUB_REF" -e "GITHUB_SHA" -e "GITHUB_REPOSITORY" -e "GITHUB_REPOSITORY_OWNER" -e "GITHUB_REPOSITORY_OWNER_ID" -e "GITHUB_RUN_ID" -e "GITHUB_RUN_NUMBER" -e "GITHUB_RETENTION_DAYS" -e "GITHUB_RUN_ATTEMPT" -e "GITHUB_ACTOR_ID" -e "GITHUB_ACTOR" -e "GITHUB_WORKFLOW" -e "GITHUB_HEAD_REF" -e "GITHUB_BASE_REF" -e "GITHUB_EVENT_NAME" -e "GITHUB_SERVER_URL" -e "GITHUB_API_URL" -e "GITHUB_GRAPHQL_URL" -e "GITHUB_REF_NAME" -e "GITHUB_REF_PROTECTED" -e "GITHUB_REF_TYPE" -e "GITHUB_WORKFLOW_REF" -e "GITHUB_WORKFLOW_SHA" -e "GITHUB_REPOSITORY_ID" -e "GITHUB_TRIGGERING_ACTOR" -e "GITHUB_WORKSPACE" -e "GITHUB_ACTION" -e "GITHUB_EVENT_PATH" -e "GITHUB_ACTION_REPOSITORY" -e "GITHUB_ACTION_REF" -e "GITHUB_PATH" -e "GITHUB_ENV" -e "GITHUB_STEP_SUMMARY" -e "GITHUB_STATE" -e "GITHUB_OUTPUT" -e "RUNNER_OS" -e "RUNNER_ARCH" -e "RUNNER_NAME" -e "RUNNER_ENVIRONMENT" -e "RUNNER_TOOL_CACHE" -e "RUNNER_TEMP" -e "RUNNER_WORKSPACE" -e "ACTIONS_RUNTIME_URL" -e "ACTIONS_RUNTIME_TOKEN" -e "ACTIONS_CACHE_URL" -e "ACTIONS_RESULTS_URL" -e "ACTIONS_ORCHESTRATION_ID" -e GITHUB_ACTIONS=true -e CI=true -v "/var/run/docker.sock":"/var/run/docker.sock" -v "/home/runner/work/_temp":"/github/runner_temp" -v "/home/runner/work/_temp/_github_home":"/github/home" -v "/home/runner/work/_temp/_github_workflow":"/github/workflow" -v "/home/runner/work/_temp/_runner_file_commands":"/github/file_commands" -v "/home/runner/work/portfolio-forum/portfolio-forum":"/github/workspace" 33b1c2:d0f3e093feec4adb91abbca76f725622
 ======CMD======
 cd ***
-docker compose -f compose.yaml -f compose.prod.yaml pull forum
-docker compose -f compose.yaml -f compose.prod.yaml up -d --no-deps --force-recreate forum
+docker compose pull forum
+docker compose up -d --no-deps --force-recreate forum
 
 ======END======
 2026/05/22 04:49:07 ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey], no supported methods remainThere are two layers of automated deployment:
 
-1. **`portfolio-infra`** — any push to `main` in this repo runs `docker compose -f compose.yaml -f compose.prod.yaml pull && docker compose -f compose.yaml -f compose.prod.yaml up -d --remove-orphans` to pick up config changes and any updated images.
+1. **`portfolio-infra`** — any push to `main` in this repo runs `docker compose pull && docker compose up -d --remove-orphans` to pick up config changes and any updated images.
 2. **Per-service repos** (`portfolio-finance`, `portfolio-forum`, etc.) — each has its own `deploy.yml` that triggers after its `Build & Publish` workflow succeeds, SSHes in, and restarts **only that one container**.
 
 ### SSH keys — generate on the server, one per service
@@ -282,20 +282,20 @@ nano ~/portfolio2/infra/.env
 ## 8. Pull Images and Start the Stack
 
 ```bash
-docker compose -f compose.yaml -f compose.prod.yaml pull
-docker compose -f compose.yaml -f compose.prod.yaml up -d --remove-orphans
+docker compose pull
+docker compose up -d --remove-orphans
 ```
 
 Check all services came up cleanly:
 
 ```bash
-docker compose -f compose.yaml -f compose.prod.yaml ps
+docker compose ps
 ```
 
 All services should show `healthy` or `running`. If something is stuck, inspect its logs:
 
 ```bash
-docker compose -f compose.yaml -f compose.prod.yaml logs identity --tail=50
+docker compose logs identity --tail=50
 ```
 
 ---
@@ -355,8 +355,8 @@ Certs land at `/etc/letsencrypt/live/hankkarpinen.com/`. The gateway mounts `/et
 Then start the stack normally:
 
 ```bash
-docker compose -f compose.yaml -f compose.prod.yaml pull
-docker compose -f compose.yaml -f compose.prod.yaml up -d --remove-orphans
+docker compose pull
+docker compose up -d --remove-orphans
 ```
 
 ### Certificate renewal
@@ -369,7 +369,7 @@ sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/restart-gateway.sh > /dev/null <<'EOF'
 #!/bin/sh
 cd /home/deploy/portfolio2/infra
-docker compose -f compose.yaml -f compose.prod.yaml restart gateway
+docker compose restart gateway
 EOF
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/restart-gateway.sh
 ```
@@ -389,37 +389,30 @@ sudo certbot renew --dry-run
 
 ## 11. Useful Day-to-Day Commands
 
-Both files, every time — `compose.yaml` alone declares no ports, no TLS and no production
-environment. Worth an alias:
-
-```bash
-alias dcp='docker compose -f compose.yaml -f compose.prod.yaml'
-```
-
 ```bash
 # View all service statuses
-dcp ps
+docker compose ps
 
 # Follow logs for all services
-dcp logs -f
+docker compose logs -f
 
 # Follow logs for a specific service
-dcp logs -f identity
+docker compose logs -f identity
 
 # Pull latest images and redeploy
-dcp pull && dcp up -d --remove-orphans
+docker compose pull && docker compose up -d --remove-orphans
 
 # Stop the entire stack
-dcp down
+docker compose down
 
 # Stop the stack and wipe all data (destructive!)
-dcp down -v
+docker compose down -v
 
 # Restart a single service
-dcp restart forum
+docker compose restart forum
 
 # Open a shell inside a running container
-dcp exec identity bash
+docker compose exec identity bash
 ```
 
 ---
