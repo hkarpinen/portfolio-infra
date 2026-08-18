@@ -22,7 +22,7 @@ jobs:
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
             printf '%s' "$DEPLOY_ENV" > .env
-            docker compose pull
-            docker compose up -d
+            docker compose -f compose.yaml -f compose.prod.yaml pull
+            docker compose -f compose.yaml -f compose.prod.yaml up -d --remove-orphans
         env:
           DEPLOY_ENV: ${{ secrets.DEPLOY_ENV }}
