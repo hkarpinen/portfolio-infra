@@ -1,58 +1,87 @@
-# Dev facts, layered on compose.yaml:
+# Standalone dev stack:
+#   docker compose -f compose.dev.yaml up -d
 #
-#   docker compose -f compose.yaml -f compose.dev.yaml up -d
-#
-# Only additions — the base declares nothing about ports, TLS or host paths, so nothing here has
-# to undo anything. The flow is the same one production runs: client -> gateway -> service.
-#
-# The frontend is NOT containerised in dev — run it locally:
-#   cd ../frontend && npm run dev
-#
-# next.config.mjs rewrites /api/* to the gateway on :8088.
+# The frontend is NOT containerised — run it locally with `npm run dev`; next.config.mjs rewrites
+# /api/* to the gateway on :8088.
+x-rabbit: &rabbit
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Username: ${RABBITMQ_USER:-guest}
+  RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
 
-# A parallel e2e run drives far more traffic per minute than any real user, and the production
-# posture would reject it — which surfaces as the frontend's error boundary rather than as
-# anything resembling a rate-limit message.
-x-dev-ratelimits: &dev-ratelimits
-  RateLimiting__standard: "5000"
-  RateLimiting__auth: "5000"
-  RateLimiting__write: "5000"
-  RateLimiting__api: "5000"
-  RateLimiting__search: "5000"
+x-jwt-consumer: &jwt-consumer
+  # A URL, not a secret. Only identity holds key material.
+  Jwt__Authority: http://identity:8080
 
-x-dev-mail: &dev-mail
-  Email__Host: mailpit
-  Email__Port: "1025"
-  Email__BaseUrl: http://localhost:3000
+x-aspnet: &aspnet
+  ASPNETCORE_URLS: http://+:8080
 
-x-dev: &dev
-  ASPNETCORE_ENVIRONMENT: Development
+x-healthcheck: &healthcheck
+  test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8080"]
+  interval: 10s
+  timeout: 5s
+  retries: 15
+  start_period: 30s
+
+x-backend: &backend
+  restart: unless-stopped
+  healthcheck: *healthcheck
 
 services:
   postgres:
+    restart: unless-stopped
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_password}
+      FORUM_DB_PASSWORD: ${FORUM_DB_PASSWORD:-forum_password}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-finance_password}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications_password}
+      HOUSEHOLD_DB_PASSWORD: ${HOUSEHOLD_DB_PASSWORD:-household_password}
+      MEDIA_DB_PASSWORD: ${MEDIA_DB_PASSWORD:-media_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "5432:5432"
 
   rabbitmq:
+    restart: unless-stopped
+    image: rabbitmq:3-management
+    # No host ports — accessible only inside the Docker network.
+    # To inspect the management UI on the VPS: ssh -L 15672:localhost:15672 deploy@YOUR_VPS
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    # Without this /var/lib/rabbitmq lives in the container layer, so every image update or
+    # `compose down` discards durable queues and any message not yet acked. Postgres has had
+    # pgdata from the start; the broker holds state exactly the same way and needs the same.
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "5672:5672"
       - "15672:15672"
-
   # Dev only — production sends through a real SMTP relay.
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "8025:8025"
-      - "1025:1025"
 
   identity:
-    build:
-      context: ../identity
-      dockerfile: Dockerfile
-    ports:
-      - "8081:8080"
+    <<: *backend
+    image: ${IDENTITY_IMAGE:-ghcr.io/hkarpinen/portfolio-identity:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
-      - ./uploads/avatars:/data/avatars
+      - avatar_data:/data/avatars
     environment:
       <<: [*dev, *dev-ratelimits, *dev-mail]
       # Throwaway key, committed on purpose so `compose up` needs no setup. Production has no
@@ -63,7 +92,44 @@ services:
       # and register in dev fails CAPTCHA against Google with a dummy token.
       Recaptcha__SecretKey: ""
 
+      <<: [*aspnet, *rabbit]
+      Storage__PublicBaseUrl: ${STORAGE_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/avatars}
+      Recaptcha__SecretKey: ${RECAPTCHA_SECRET_KEY:-}
+
+      ConnectionStrings__Identity: ${IDENTITY_CONN:-Host=postgres;Database=identity_db;Username=identity_user;Password=identity_password}
+      # No default. Left unset, identity refuses to start and prints the openssl line that
+      # generates one.
+      Jwt__PrivateKeyPem: ${JWT_PRIVATE_KEY_PEM:-}
+      Storage__LocalPath: /data/avatars
+    build:
+      context: ../identity
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./uploads/avatars:/data/avatars
+
   forum:
+    <<: *backend
+    image: ${FORUM_IMAGE:-ghcr.io/hkarpinen/portfolio-forum:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
+    volumes:
+      - forum_media:/data/forum
+    environment:
+      <<: [*dev, *dev-ratelimits]
+      Media__PublicBaseUrl: http://localhost:3000/uploads/forum
+
+      <<: [*aspnet, *rabbit, *jwt-consumer]
+      Media__PublicBaseUrl: ${MEDIA_PUBLIC_BASE_URL:-https://hankkarpinen.com/uploads/forum}
+
+      ConnectionStrings__Forum: ${FORUM_CONN:-Host=postgres;Database=forum_db;Username=forum_user;Password=forum_password}
+      Media__RootPath: /data/forum
     build:
       context: ../forum
       dockerfile: Dockerfile
@@ -71,34 +137,65 @@ services:
       - "8082:8080"
     volumes:
       - ./uploads/forum:/data/forum
-    environment:
-      <<: [*dev, *dev-ratelimits]
-      Media__PublicBaseUrl: http://localhost:3000/uploads/forum
 
   finance:
+    <<: *backend
+    image: ${FINANCE_IMAGE:-ghcr.io/hkarpinen/portfolio-finance:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
+    environment:
+      <<: [*dev, *dev-ratelimits]
+
+      <<: [*aspnet, *rabbit, *jwt-consumer]
+      Plaid__ClientId: ${PLAID_CLIENT_ID:-}
+      Plaid__Secret: ${PLAID_SECRET:-}
+      Plaid__Environment: ${PLAID_ENVIRONMENT:-sandbox}
+      Plaid__WebhookUrl: ${PLAID_WEBHOOK_URL:-}
+
+      ConnectionStrings__Finance: ${FINANCE_CONN:-Host=postgres;Database=finance_db;Username=finance_user;Password=finance_password}
     build:
       context: ../finance
       dockerfile: Dockerfile
     ports:
       - "8083:8080"
+
+  household:
+    <<: *backend
+    image: ${HOUSEHOLD_IMAGE:-ghcr.io/hkarpinen/portfolio-household:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
     environment:
       <<: [*dev, *dev-ratelimits]
 
-  household:
+      <<: [*aspnet, *rabbit, *jwt-consumer]
+
+      ConnectionStrings__Household: ${HOUSEHOLD_CONN:-Host=postgres;Database=household_db;Username=household_user;Password=household_password}
     build:
       context: ../household
       dockerfile: Dockerfile
     ports:
       - "8085:8080"
-    environment:
-      <<: [*dev, *dev-ratelimits]
 
   notifications:
-    build:
-      context: ../notifications
-      dockerfile: Dockerfile
-    ports:
-      - "8084:8080"
+    <<: *backend
+    image: ${NOTIFICATIONS_IMAGE:-ghcr.io/hkarpinen/portfolio-notifications:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
     environment:
       <<: [*dev, *dev-ratelimits, *dev-mail]
       Email__FromAddress: noreply@hankkarpinen.com
@@ -107,24 +204,136 @@ services:
       Email__Username: ""
       Email__Password: ""
 
+      <<: [*aspnet, *rabbit, *jwt-consumer]
+      # The only service that sends mail. Without these it falls back to appsettings.json —
+      # localhost:1025, which nothing listens on inside the container — and every confirmation
+      # and reset mail dead-letters.
+      Email__Host: ${EMAIL_HOST:-localhost}
+      Email__Port: ${EMAIL_PORT:-25}
+      Email__Username: ${EMAIL_USERNAME:-}
+      Email__Password: ${EMAIL_PASSWORD:-}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS:-noreply@hankkarpinen.com}
+      Email__FromName: ${EMAIL_FROM_NAME:-hankkarpinen.com}
+      Email__BaseUrl: ${EMAIL_BASE_URL:-https://hankkarpinen.com}
+
+      ConnectionStrings__Notifications: ${NOTIFICATIONS_CONN:-Host=postgres;Database=notifications_db;Username=notifications_user;Password=notifications_password}
+    build:
+      context: ../notifications
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+
   math:
+    <<: *backend
+    image: ${MATH_IMAGE:-ghcr.io/hkarpinen/portfolio-math:latest}
+    depends_on:
+      identity:
+        condition: service_healthy
+    environment:
+      <<: *dev
+
+      <<: [*aspnet, *jwt-consumer]
     build:
       context: ../math
       dockerfile: Dockerfile
     ports:
       - "8086:8080"
-    environment:
-      <<: *dev
 
   geography:
+    <<: *backend
+    image: ${GEOGRAPHY_IMAGE:-ghcr.io/hkarpinen/portfolio-geography:latest}
+    depends_on:
+      identity:
+        condition: service_healthy
+    environment:
+      <<: *dev
+      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
+
+      <<: [*aspnet, *jwt-consumer]
+      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
     build:
       context: ../geography
       dockerfile: Dockerfile
     ports:
       - "8087:8080"
+
+  media:
+    <<: *backend
+    image: ${MEDIA_IMAGE:-ghcr.io/hkarpinen/portfolio-media:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity:
+        condition: service_healthy
+    volumes:
+      - media_data:/data/media
+    environment:
+      <<: [*aspnet, *rabbit, *jwt-consumer]
+      ConnectionStrings__Media: ${MEDIA_CONN:-Host=postgres;Database=media_db;Username=media_user;Password=media_password}
+      Storage__RootPath: /data/media
+
+  # The route table.
+  gateway:
+    restart: unless-stopped
+    image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:latest}
     environment:
       <<: *dev
-      OpenWeatherMap__ApiKey: ${OPENWEATHERMAP_API_KEY:-}
+      # No Tls paths, so nothing binds 443. No CanonicalHost, so nothing redirects.
+      Gateway__HttpPort: "8080"
+      Uploads__Avatars: /var/www/avatars
+      Uploads__Forum: /var/www/forum
+      SVC_MEDIA_URL: http://media:8080
+      # The e2e suite points this at its standalone build on :3100.
+      SVC_FRONTEND_URL: ${SVC_FRONTEND_URL:-http://host.docker.internal:3000}
+
+      # HttpPort serves the ACME challenge and redirects the rest. InternalPort is never
+      # published: the frontend's server-side fetches land there and skip the redirect, which
+      # would otherwise send in-cluster traffic out to the public origin and back. Setting the
+      # Tls paths is what binds 443.
+      Gateway__HttpPort: "80"
+      Uploads__Avatars: /var/www/avatars
+      Uploads__Forum: /var/www/forum
+      SVC_FRONTEND_URL: http://frontend:3000
+      SVC_IDENTITY_URL: http://identity:8080
+      SVC_FORUM_URL: http://forum:8080
+      SVC_FINANCE_URL: http://finance:8080
+      SVC_NOTIFICATIONS_URL: http://notifications:8080
+      SVC_HOUSEHOLD_URL: http://household:8080
+      SVC_MATH_URL: http://math:8080
+      SVC_GEOGRAPHY_URL: http://geography:8080
+      SVC_MEDIA_URL: http://media:8080
+    ports:
+    volumes:
+      - avatar_data:/var/www/avatars:ro
+      - forum_media:/var/www/forum:ro
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+    image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:dev}
+    ports:
+      - "8088:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./uploads/avatars:/var/www/avatars:ro
+      - ./uploads/forum:/var/www/forum:ro
+  # Profiled off: `npm run dev` serves the frontend in dev.
+
+  frontend:
+    restart: unless-stopped
+    image: ${FRONTEND_IMAGE:-ghcr.io/hkarpinen/portfolio-frontend:latest}
+    environment:
+      INTERNAL_API_URL: http://gateway:8080
+      NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
+    profiles: ["containerised-frontend"]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   media:
     build:
@@ -137,28 +346,10 @@ services:
     environment:
       <<: [*dev, *dev-ratelimits]
 
-  gateway:
-    build:
-      context: ../gateway
-      dockerfile: Dockerfile
-    image: ${GATEWAY_IMAGE:-ghcr.io/hkarpinen/portfolio-gateway:dev}
-    ports:
-      - "8088:8080"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./uploads/avatars:/var/www/avatars:ro
-      - ./uploads/forum:/var/www/forum:ro
-    environment:
-      <<: *dev
-      # No Tls paths, so nothing binds 443. No CanonicalHost, so nothing redirects.
-      Gateway__HttpPort: "8080"
-      Uploads__Avatars: /var/www/avatars
-      Uploads__Forum: /var/www/forum
-      SVC_MEDIA_URL: http://media:8080
-      # The e2e suite points this at its standalone build on :3100.
-      SVC_FRONTEND_URL: ${SVC_FRONTEND_URL:-http://host.docker.internal:3000}
-
-  # Profiled off: `npm run dev` serves the frontend in dev.
-  frontend:
-    profiles: ["containerised-frontend"]
+volumes:
+  pgdata:
+  media_data:
+  rabbitmq_data:
+  avatar_data:
+  forum_media:
+  certbot_webroot:
